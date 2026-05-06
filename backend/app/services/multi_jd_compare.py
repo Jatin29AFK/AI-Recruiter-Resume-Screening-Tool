@@ -16,6 +16,21 @@ def infer_jd_title(job_description: str, analysis_result: dict, index: int) -> s
     return f"JD {index}"
 
 
+def _quick_recommendation_verdict(overall_score: float, critical_missing_count: int) -> str:
+    """
+    Lightweight recommendation label for multi-JD comparison.
+    Mirrors the threshold logic in recommendation_engine._final_recommendation()
+    without the full report overhead.
+    """
+    if overall_score >= 72 and critical_missing_count == 0:
+        return "Strongly Recommended"
+    elif overall_score >= 60 and critical_missing_count <= 2:
+        return "Recommended"
+    elif overall_score >= 45:
+        return "Borderline"
+    return "Not Recommended"
+
+
 def compare_resume_against_multiple_jds(
     file_path: str,
     filename: str,
@@ -32,16 +47,20 @@ def compare_resume_against_multiple_jds(
             include_llm_explanation=False,
         )
 
+        overall_score = analysis["scores"]["overall_score"]
+        critical_missing = analysis["critical_missing_skills"]
+
         comparisons.append(
             {
                 "jd_index": index,
                 "jd_title": infer_jd_title(jd, analysis, index),
-                "overall_score": analysis["scores"]["overall_score"],
+                "overall_score": overall_score,
                 "fit_label": analysis["scores"]["fit_label"],
                 "required_skill_score": analysis["scores"]["required_skill_score"],
                 "skill_support_score": analysis["scores"]["skill_support_score"],
-                "critical_missing_skills": analysis["critical_missing_skills"],
+                "critical_missing_skills": critical_missing,
                 "matched_skills": analysis["matched_skills"][:8],
+                "recommendation_verdict": _quick_recommendation_verdict(overall_score, len(critical_missing)),
             }
         )
 

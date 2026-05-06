@@ -2,7 +2,6 @@ import re
  
  
 HTML_TAG_RE = re.compile(r"<[^>]+>")
-MULTISPACE_RE = re.compile(r"\s+")
  
 SCRIPT_PATTERNS = [
     r"<script\b",
@@ -59,7 +58,6 @@ def clean_jd_text(text: str) -> str:
     cleaned = re.sub(r"\r", "\n", cleaned)
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    cleaned = MULTISPACE_RE.sub(" ", cleaned)
     return cleaned.strip()
  
  

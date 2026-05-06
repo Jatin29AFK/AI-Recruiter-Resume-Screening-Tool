@@ -38,33 +38,33 @@ def simulate_shortlist_outcome(
         risk_points += 1
 
     required_skill_score = scores.get("required_skill_score", 0)
-    if required_skill_score < 40:
+    if required_skill_score < 25:
         reasons.append(
-            "Required skill coverage is currently weak compared with the job description."
+            "Required skill coverage is currently weak — but check for transferable equivalents."
         )
         action_plan.append(
-            "Prioritize the strongest relevant skills in summary, experience, and projects."
+            "Highlight adjacent skills and experience that demonstrate readiness for key requirements."
         )
-        risk_points += 2
-    elif required_skill_score < 60:
+        risk_points += 1
+    elif required_skill_score < 50:
         reasons.append(
-            "Required skill coverage is only partial for this job description."
+            "Required skill coverage is partial — some important JD keywords may be missing."
         )
         action_plan.append(
-            "Improve keyword and evidence alignment for the most important required skills."
+            "Improve alignment with the most important required skills using real evidence."
         )
         risk_points += 1
 
     skill_support_score = scores.get("skill_support_score", 0)
-    if skill_support_score < 40:
+    if skill_support_score < 30:
         reasons.append(
             "Matched skills are not strongly supported by project or experience evidence."
         )
         action_plan.append(
             "Rewrite bullets so important skills are backed by tools, actions, and outcomes."
         )
-        risk_points += 2
-    elif skill_support_score < 55:
+        risk_points += 1
+    elif skill_support_score < 48:
         reasons.append(
             "Some matched skills need stronger evidence in your resume."
         )
@@ -128,9 +128,11 @@ def simulate_shortlist_outcome(
 
     overall_score = scores.get("overall_score", 0)
 
-    if risk_points >= 8 or (risk_points >= 6 and overall_score < 45):
+    # Thresholds loosened to reflect natural HR shortlisting:
+    # Only "High risk" when there are truly many blockers AND score is low.
+    if risk_points >= 10 or (risk_points >= 7 and overall_score < 38):
         verdict = "High rejection risk"
-    elif risk_points >= 4:
+    elif risk_points >= 5:
         verdict = "Moderate rejection risk"
     else:
         verdict = "Lower rejection risk"

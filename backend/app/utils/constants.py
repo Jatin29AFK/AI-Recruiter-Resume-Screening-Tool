@@ -1,3 +1,7 @@
+from os import getenv
+
+# When true, scoring and ATS penalties are softened to be more permissive.
+LENIENT_MODE = getenv("LENIENT_MODE", "false").lower() in ("1", "true", "yes")
 DOMAIN_SKILL_PACKS = {
     "software_web": {
         "label": "Software / Web",
@@ -8,11 +12,12 @@ DOMAIN_SKILL_PACKS = {
         ],
         "categories": {
             "programming_languages": [
-                "python", "java", "c", "c++", "c#", "javascript", "typescript", "sql"
+                "python", "java", "go", "rust", "c", "c++", "c#", "javascript", "typescript", "sql"
             ],
             "frameworks_and_web": [
                 "react", "node.js", "nodejs", "express", "fastapi", "flask", "django",
-                "bootstrap", "tailwind", "rest api", "restful api", "api development"
+                "bootstrap", "tailwind", "rest api", "restful api", "api development",
+                "nestjs", "spring boot", "falcon"
             ],
             "databases": [
                 "postgresql", "mysql", "mongodb", "sqlite", "redis"
@@ -24,8 +29,18 @@ DOMAIN_SKILL_PACKS = {
         },
         "aliases": {
             "nodejs": "node.js",
+            "node js": "node.js",
+            "node-js": "node.js",
             "restful api": "rest api",
             "js": "javascript",
+            "java script": "javascript",
+            "java-script": "javascript",
+            "type script": "typescript",
+            "type-script": "typescript",
+            "nest js": "nestjs",
+            "nest.js": "nestjs",
+            "springboot": "spring boot",
+            "spring-boot": "spring boot",
             "ts": "typescript",
         },
     },
@@ -35,7 +50,9 @@ DOMAIN_SKILL_PACKS = {
         "keywords": [
             "machine learning", "deep learning", "nlp", "computer vision",
             "data scientist", "data analysis", "transformers", "llm", "rag",
-            "langchain", "pytorch", "tensorflow", "scikit-learn"
+            "langchain", "pytorch", "tensorflow", "scikit-learn",
+            "fastapi", "resume parsing", "semantic similarity", "text preprocessing",
+            "generative ai", "gemini", "scoring system", "ats", "resume intelligence"
         ],
         "categories": {
             "data_ai_ml": [
@@ -44,13 +61,25 @@ DOMAIN_SKILL_PACKS = {
                 "scikit-learn", "sklearn", "tensorflow", "pytorch", "keras",
                 "transformers", "llm", "rag", "langchain", "langgraph",
                 "sentence transformers", "spacy", "hugging face", "faiss", "chroma",
-                "vector database", "opencv", "prompt engineering"
+                "vector database", "opencv", "prompt engineering",
+                "text preprocessing", "semantic similarity", "text classification",
+                "skill extraction", "resume parsing", "generative ai",
+                "gemini", "llm integration", "scoring system", "scoring systems",
+                "evidence validation", "gap detection", "explainable ai",
+                "evaluation metrics", "tfidf", "tf-idf", "cosine similarity",
+                "ats", "keyword extraction", "information extraction"
             ],
             "programming_languages": [
                 "python", "sql"
             ],
+            "frameworks_and_apis": [
+                "fastapi", "flask", "django", "rest api", "rest apis", "restful api",
+                "json", "json/data handling", "json data handling",
+                "react", "tailwind css", "tailwind"
+            ],
             "cloud_devops_tools": [
-                "git", "github", "docker", "aws", "azure", "gcp"
+                "git", "github", "docker", "aws", "azure", "gcp",
+                "vercel", "render", "deployment"
             ],
         },
         "aliases": {
@@ -58,6 +87,13 @@ DOMAIN_SKILL_PACKS = {
             "natural language processing": "nlp",
             "llms": "llm",
             "large language models": "llm",
+            "restful api": "rest api",
+            "rest apis": "rest api",
+            "json/data handling": "json",
+            "json data handling": "json",
+            "llm integration": "llm",
+            "gemini api": "gemini",
+            "tf-idf": "tfidf",
         },
     },
 

@@ -13,7 +13,7 @@ export default function MiniSummaryCards({
       value: `${result.scores?.overall_score ?? 0}%`,
       subtitle: result.scores?.fit_label || 'Unknown',
       helper:
-        'Shows how well your resume content matches this specific job description.',
+        'Weighted blend of skill coverage, semantic similarity, evidence quality, and critical gap penalties. Primary ranking signal.',
       muted: false,
     },
     {
@@ -21,9 +21,9 @@ export default function MiniSummaryCards({
       value: `${result.ats_audit?.score ?? 0}`,
       subtitle: result.ats_audit?.grade || 'Unknown',
       helper:
-        'Shows how ATS-friendly your resume format and structure are.',
+        'How well the resume survives automated ATS scanning — formatting, readable section headers, keyword presence, no tables/images.',
       note:
-        'Good format does not guarantee strong job fit.',
+        'Strong ATS score alone does not indicate a strong JD fit.',
       muted: false,
     },
     {
@@ -31,10 +31,10 @@ export default function MiniSummaryCards({
       value: `${result.critical_missing_skills?.length ?? 0}`,
       subtitle:
         result.critical_missing_skills?.length > 0
-          ? 'Need attention'
-          : 'No major blockers',
+          ? 'Review before deciding'
+          : 'No critical blockers',
       helper:
-        'Shows important missing job-related skills or requirements.',
+        'Count of must-have JD skills absent from the resume. Each gap reduces the overall score. Zero gaps is a strong positive signal.',
       muted: false,
     },
     {
@@ -44,10 +44,10 @@ export default function MiniSummaryCards({
         : 'Pending',
       subtitle: hasOptimizedResult
         ? tailorResult.analysis_after?.fit_label || 'Updated'
-        : 'Generate optimized resume',
+        : 'Generate optimized draft',
       helper: hasOptimizedResult
-        ? 'Shows estimated fit after generating the optimized resume draft.'
-        : 'This will appear after you generate a safer JD-optimized resume draft.',
+        ? 'Estimated fit score after applying JD-targeted optimizations to the resume draft.'
+        : 'Available after generating the JD-optimized resume draft in the Optimized Resume tab.',
       muted: !hasOptimizedResult,
     },
   ]
@@ -58,11 +58,10 @@ export default function MiniSummaryCards({
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div>
             <h2 className="text-xl font-semibold text-gray-900">
-              Application Readiness
+              Resume Scoring Summary
             </h2>
             <p className="mt-1 text-sm leading-6 text-gray-600">
-              Readiness Score shows whether your resume looks ready to apply for this job
-              right now after combining fit, ATS quality, evidence support, and major gaps.
+              Readiness Score combines JD fit, ATS quality, evidence strength, and critical gap count into a single indicator. 80+ = strong submission, 65–79 = nearly ready, 50–64 = needs work, &lt;50 = significant gaps.
             </p>
           </div>
 
@@ -88,7 +87,7 @@ export default function MiniSummaryCards({
                 {applyReadiness.score}
               </p>
               <p className="mt-2 text-xs text-gray-500">
-                Higher means you look more ready to apply now.
+                80+ strong · 65–79 nearly ready · 50–64 needs work · &lt;50 major gaps
               </p>
             </div>
           </div>

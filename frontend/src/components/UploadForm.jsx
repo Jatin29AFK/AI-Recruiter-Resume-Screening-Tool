@@ -1,267 +1,253 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
-  validateResumeFile,
   validateJobDescriptionInput,
   sanitizeJobDescriptionInput,
 } from '../utils/jdValidation'
+import JobManager from './JobManager'
 
-export default function UploadForm({ onAnalyze, loading, resetKey }) {
-  const fileInputRef = useRef(null)
+export default function UploadForm({ onBatchAnalyze, loading }) {
+  const batchFileInputRef = useRef(null)
 
-  const [resumeFile, setResumeFile] = useState(null)
+  // multi-resume state
+  const [resumeFiles, setResumeFiles] = useState([])
+  const [batchFileError, setBatchFileError] = useState('')
+  const [isDraggingBatch, setIsDraggingBatch] = useState(false)
+
+  // job description
   const [jobDescription, setJobDescription] = useState('')
-  const [jobUrl, setJobUrl] = useState('')
-  const [fileError, setFileError] = useState('')
   const [jdError, setJdError] = useState('')
-  const [urlError, setUrlError] = useState('')
-  const [fetchingUrl, setFetchingUrl] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
+  const [showJobManager, setShowJobManager] = useState(false)
+  const [selectedJob, setSelectedJob] = useState(null)
 
-  useEffect(() => {
-    setResumeFile(null)
-    setJobDescription('')
-    setJobUrl('')
-    setFileError('')
-    setJdError('')
-    setUrlError('')
-    setFetchingUrl(false)
-    setIsDragging(false)
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }, [resetKey])
-
-  const applyFile = (file) => {
-    setResumeFile(file)
-    const error = validateResumeFile(file)
-    setFileError(error)
-  }
-
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0] || null
-    applyFile(file)
-  }
-
-  const handleDragOver = (event) => {
-    event.preventDefault()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = (event) => {
-    event.preventDefault()
-    setIsDragging(false)
-  }
-
-  const handleDrop = (event) => {
-    event.preventDefault()
-    setIsDragging(false)
-    const file = event.dataTransfer.files?.[0] || null
-    applyFile(file)
-  }
-
-  const handleJdChange = (event) => {
-    const rawValue = event.target.value
-    const cleanedValue = sanitizeJobDescriptionInput(rawValue)
-    setJobDescription(cleanedValue)
-
-    if (jdError) {
-      setJdError(validateJobDescriptionInput(cleanedValue))
-    }
-  }
-
-  const handleFetchFromUrl = async () => {
-    const trimmedUrl = jobUrl.trim()
-
-    if (!trimmedUrl) {
-      setUrlError('Please enter a job URL first.')
-      return
-    }
-
-    try {
-      setFetchingUrl(true)
-      setUrlError('')
-      setJdError('')
-
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/matcher/extract-jd-from-url`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ url: trimmedUrl }),
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch JD from URL.')
+  // ── Multi resume ───────────────────────────────────────────────────────────
+  const addBatchFiles = (newFiles) => {
+    const allowed = ['.pdf', '.docx']
+    const valid = []
+    const invalid = []
+    const duplicates = []
+    Array.from(newFiles).forEach((f) => {
+      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
+      if (!allowed.includes(ext)) {
+        invalid.push(f.name)
+      } else {
+        valid.push(f)
       }
-
-      const cleanedFetchedJd = sanitizeJobDescriptionInput(data.job_description || '')
-      setJobDescription(cleanedFetchedJd)
-      setJdError(validateJobDescriptionInput(cleanedFetchedJd))
- 
-    } catch (error) {
-      setUrlError(error.message || 'Failed to fetch JD from URL.')
-    } finally {
-      setFetchingUrl(false)
-    }
+    })
+    setResumeFiles((prev) => {
+      const deduplicated = []
+      for (const f of valid) {
+        const isDuplicate = prev.some(
+          (existing) => existing.name === f.name && existing.size === f.size
+        )
+        if (isDuplicate) {
+          duplicates.push(f.name)
+        } else {
+          deduplicated.push(f)
+        }
+      }
+      const combined = [...prev, ...deduplicated]
+      if (invalid.length && duplicates.length) {
+        setBatchFileError(
+          `Unsupported: ${invalid.join(', ')}. Already added: ${duplicates.join(', ')}.`
+        )
+      } else if (invalid.length) {
+        setBatchFileError(`Unsupported file(s): ${invalid.join(', ')}. Use PDF or DOCX.`)
+      } else if (duplicates.length) {
+        setBatchFileError(
+          `Already added (skipped): ${duplicates.join(', ')}`
+        )
+      } else {
+        setBatchFileError('')
+      }
+      if (combined.length > 20) {
+        setBatchFileError('Maximum 20 resumes allowed.')
+        return prev
+      }
+      return combined
+    })
   }
 
-  const handleSubmit = (event) => {
-    event.preventDefault()
+  const handleBatchFileChange = (e) => {
+    addBatchFiles(e.target.files)
+    if (batchFileInputRef.current) batchFileInputRef.current.value = ''
+  }
 
-    const nextFileError = validateResumeFile(resumeFile)
-    const cleanedJobDescription = sanitizeJobDescriptionInput(jobDescription)
-    const nextJdError = validateJobDescriptionInput(cleanedJobDescription)
- 
-    setFileError(nextFileError)
+  const removeBatchFile = (index) => {
+    setResumeFiles((prev) => prev.filter((_, i) => i !== index))
+    setBatchFileError('')
+  }
+
+  const handleBatchDragOver = (e) => { e.preventDefault(); setIsDraggingBatch(true) }
+  const handleBatchDragLeave = (e) => { e.preventDefault(); setIsDraggingBatch(false) }
+  const handleBatchDrop = (e) => {
+    e.preventDefault(); setIsDraggingBatch(false)
+    addBatchFiles(e.dataTransfer.files)
+  }
+
+  // ── JD input ───────────────────────────────────────────────────────────────
+  const handleJdChange = (e) => {
+    const cleaned = sanitizeJobDescriptionInput(e.target.value)
+    setJobDescription(cleaned)
+    if (selectedJob) setSelectedJob(null)
+    if (jdError) setJdError(validateJobDescriptionInput(cleaned))
+  }
+
+  const handleSelectSavedJob = (job) => {
+    const cleaned = sanitizeJobDescriptionInput(job.description || '')
+    setJobDescription(cleaned)
+    setSelectedJob(job)
+    setJdError(validateJobDescriptionInput(cleaned))
+  }
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const cleanedJd = sanitizeJobDescriptionInput(jobDescription)
+    const nextJdError = validateJobDescriptionInput(cleanedJd)
     setJdError(nextJdError)
 
-    if (nextFileError || nextJdError) return
-
+    if (resumeFiles.length === 0) {
+      setBatchFileError('Please upload at least one resume.')
+      return
+    }
+    if (nextJdError) return
+    
     const formData = new FormData()
-    formData.append('resume', resumeFile)
-    setJobDescription(cleanedJobDescription)
-    formData.append('job_description', cleanedJobDescription)
- 
-    onAnalyze(formData)
+    resumeFiles.forEach((f) => formData.append('resumes', f))
+    formData.append('job_description', cleanedJd)
+    if (selectedJob?.job_id) {
+      formData.append('job_id', selectedJob.job_id)
+    }
+    onBatchAnalyze(formData)
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl bg-white p-6 shadow-lg">
-      <div className="space-y-3">
-        <label className="text-sm font-semibold text-gray-900">Upload Resume</label>
+    <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-lg">
 
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center transition ${
-            isDragging
-              ? 'border-blue-600 bg-blue-50'
-              : 'border-gray-300 bg-gray-50 hover:border-blue-500 hover:bg-blue-50'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx"
-            onChange={handleFileChange}
-            className="hidden"
-          />
+      {/* ── Multi-resume upload ── */}
+      {
+        <div className="space-y-3">
+          <label className="text-sm font-semibold text-gray-900 dark:text-white">
+            Upload Candidate Resumes
+            <span className="ml-2 text-xs font-normal text-gray-500 dark:text-slate-400">
+              (up to 20 PDFs / DOCXs)
+            </span>
+          </label>
 
-          <div className="mb-3 rounded-full bg-white p-3 shadow-sm transition group-hover:shadow">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-6 w-6 text-gray-700 group-hover:text-blue-600"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M12 16V4M12 4L7 9M12 4L17 9M5 20H19"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+          <div
+            onClick={() => batchFileInputRef.current?.click()}
+            onDragOver={handleBatchDragOver}
+            onDragLeave={handleBatchDragLeave}
+            onDrop={handleBatchDrop}
+            className={`group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center transition ${
+              isDraggingBatch
+                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950'
+                : 'border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950'
+            }`}
+          >
+            <input
+              ref={batchFileInputRef}
+              type="file"
+              accept=".pdf,.docx"
+              multiple
+              onChange={handleBatchFileChange}
+              className="hidden"
+            />
+            <div className="mb-3 rounded-full bg-white dark:bg-slate-700 p-3 shadow-sm">
+              <svg viewBox="0 0 24 24" className="h-6 w-6 text-gray-700 dark:text-slate-300" fill="none">
+                <path d="M12 16V4M12 4L7 9M12 4L17 9M5 20H19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">
+              {resumeFiles.length > 0
+                ? `${resumeFiles.length} file${resumeFiles.length > 1 ? 's' : ''} selected — click to add more`
+                : 'Browse or drag & drop candidate resumes'}
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">PDF, DOCX · max 20 files</p>
           </div>
 
-          <p className="text-sm font-medium text-gray-900">
-            {resumeFile ? resumeFile.name : 'Browse or drag & drop resume'}
-          </p>
-          <p className="mt-1 text-xs text-gray-500">
-            Supported formats: PDF, DOCX
-          </p>
+          {/* <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Note: Resumes should include clear headings: Experience, Education, Skills, and contact details (email or phone).</p> */}
+
+          {resumeFiles.length > 0 && (
+            <ul className="space-y-2">
+              {resumeFiles.map((f, i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-sm"
+                >
+                  <span className="truncate text-gray-800 dark:text-slate-200">{f.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeBatchFile(i)}
+                    className="ml-3 text-gray-400 hover:text-red-500 transition"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {batchFileError && (
+            <p className="text-sm font-medium text-red-600">{batchFileError}</p>
+          )}
         </div>
+      }
 
-        {fileError && (
-          <p className="text-sm font-medium text-red-600">{fileError}</p>
-        )}
-      </div>
-
+      {/* ── JD input ── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor="job-description" className="text-sm font-semibold text-gray-900">
+          <label htmlFor="job-description" className="text-sm font-semibold text-gray-900 dark:text-white">
             Job Description
           </label>
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-            More reliable
-          </span>
+          <button
+            type="button"
+            onClick={() => setShowJobManager(true)}
+            className="rounded-lg border border-blue-500 bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
+          >
+             Saved Jobs
+          </button>
         </div>
-
         <textarea
           id="job-description"
           rows="10"
           value={jobDescription}
           onChange={handleJdChange}
-          placeholder="Paste a clean job description here. This gives the most reliable resume-to-JD matching."
-          className="w-full rounded-2xl border border-gray-300 p-4 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          placeholder="Paste the job description here. This is used to screen and rank all uploaded candidates."
+          className="w-full rounded-2xl border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white p-4 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
-
-        <p className="text-xs text-green-700">
-          Pasting the JD manually gives the most reliable analysis and is recommended whenever possible.
-        </p>
-
-        {jdError && (
-          <p className="text-sm font-medium text-red-600">{jdError}</p>
+        {jdError && <p className="text-sm font-medium text-red-600">{jdError}</p>}
+        {selectedJob?.job_id && (
+          <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 px-3 py-2">
+            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+              Using saved job rules from: {selectedJob.title}
+            </p>
+            <p className="mt-0.5 text-xs text-blue-600 dark:text-blue-400">
+              Editing the JD text switches this back to pasted-JD screening only.
+            </p>
+          </div>
         )}
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <label htmlFor="job-url" className="text-sm font-semibold text-gray-900">
-            Job Description URL
-          </label>
-          <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-            Less reliable
-          </span>
-        </div>
+      {/* Job Manager Modal */}
+      {showJobManager && (
+        <JobManager
+          initialDescription={jobDescription}
+          onSelectJob={handleSelectSavedJob}
+          onClose={() => setShowJobManager(false)}
+        />
+      )}
 
-        <div className="flex flex-col gap-3 md:flex-row">
-          <input
-            id="job-url"
-            type="url"
-            value={jobUrl}
-            onChange={(event) => {
-              setJobUrl(event.target.value)
-              if (urlError) setUrlError('')
-            }}
-            placeholder="Paste a job posting URL to try extracting the JD"
-            className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
-
-          <button
-            type="button"
-            onClick={handleFetchFromUrl}
-            disabled={fetchingUrl}
-            className="rounded-xl border border-gray-300 px-5 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {fetchingUrl ? 'Fetching JD...' : 'Fetch from URL'}
-          </button>
-        </div>
-
-        <p className="text-xs leading-5 text-red-600">
-          JD extraction from URLs can be noisy or incomplete on some job sites. For the most reliable resume-to-JD alignment, paste the job description manually whenever possible.
-        </p>
-
-        {urlError && (
-          <p className="text-sm font-medium text-red-600">{urlError}</p>
-        )}
-      </div>
-
+      {/* ── Submit ── */}
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={loading || fetchingUrl}
-          className="rounded-xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={loading}
+          className="rounded-xl bg-black px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? 'Analyzing...' : 'Analyze Resume'}
+          {loading
+            ? 'Screening Candidates...'
+            : `Screen ${resumeFiles.length || ''} Candidate${resumeFiles.length !== 1 ? 's' : ''}`}
         </button>
       </div>
     </form>

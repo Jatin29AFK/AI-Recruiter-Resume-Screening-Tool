@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from threading import Lock
 
-DATA_DIR = Path("data")
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 VISITOR_FILE = DATA_DIR / "visitor_count.json"

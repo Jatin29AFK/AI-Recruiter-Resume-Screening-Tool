@@ -25,7 +25,7 @@ export default function AppBrand({ onClick }) {
           HireFit
         </h1>
         <p className="mt-2 text-sm font-medium text-gray-500 group-hover:text-gray-700 sm:text-lg">
-          Resume-to-JD match analysis and safer resume optimization
+          AI-powered recruiter screening · rank candidates · shortlist with evidence
         </p>
       </div>
     </button>

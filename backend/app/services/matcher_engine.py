@@ -40,25 +40,55 @@ def fuzzy_skill_match(
 
 def semantic_text_similarity(resume_text: str, jd_text: str) -> float:
     """
-    Lightweight semantic-ish similarity using TF-IDF + cosine similarity.
-    Suitable for deployment on Render.
+    Bag-of-words cosine similarity.
+
+    Why NOT TF-IDF on 2 documents: when there are only 2 documents, any term
+    appearing in BOTH gets IDF = log(2/2) = 0 and is completely zeroed out.
+    This makes every relevant shared keyword (the very terms that indicate match)
+    invisible, collapsing all scores to 10-17%.
+
+    CountVectorizer counts raw term frequencies, so shared domain vocabulary
+    (e.g. "backend", "python", "api") contributes proportionally — giving
+    40-60% similarity for genuinely matching pairs.
     """
+    from sklearn.feature_extraction.text import CountVectorizer
+
     texts = [resume_text, jd_text]
-
-    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
-    matrix = vectorizer.fit_transform(texts)
-
-    similarity = cosine_similarity(matrix[0:1], matrix[1:2])[0][0]
+    vectorizer = CountVectorizer(stop_words="english", ngram_range=(1, 1))
+    try:
+        matrix = vectorizer.fit_transform(texts)
+        similarity = cosine_similarity(matrix[0:1], matrix[1:2])[0][0]
+    except ValueError:
+        similarity = 0.0
     return float(similarity)
 
 
 def detect_critical_missing_skills(
     required_skills: list[str],
-    missing_skills: list[str]
+    missing_skills: list[str],
+    required_skill_groups: list[list[str]] | None = None,
 ) -> list[str]:
     required_set = {normalize_skill(skill) for skill in required_skills}
     missing_set = {normalize_skill(skill) for skill in missing_skills}
-    return sorted(required_set.intersection(missing_set))
+    critical_missing = set(required_set.intersection(missing_set))
+
+    group_sets = [
+        {normalize_skill(skill) for skill in group if skill}
+        for group in (required_skill_groups or [])
+        if group
+    ]
+    grouped_skills = set().union(*group_sets) if group_sets else set()
+    critical_missing -= grouped_skills
+
+    for group in group_sets:
+        if group and group.issubset(missing_set):
+            preview = ", ".join(sorted(group)[:4])
+            suffix = ", ..." if len(group) > 4 else ""
+            critical_missing.add(
+                f"at least one required skill from group ({preview}{suffix})"
+            )
+
+    return sorted(critical_missing)
 
 
 def detect_preferred_missing_skills(

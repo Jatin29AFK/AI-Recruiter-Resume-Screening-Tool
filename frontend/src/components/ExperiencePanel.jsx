@@ -32,8 +32,15 @@ export default function ExperiencePanel({
         <div className="rounded-2xl border border-gray-200 p-4">
           <p className="text-sm text-gray-500">Estimated Resume Experience</p>
           <p className="mt-2 text-2xl font-bold text-gray-900">
-            {experienceEstimate.estimated_years ?? 'N/A'}
+            {experienceEstimate.estimated_years != null
+              ? `${experienceEstimate.estimated_years} yr${experienceEstimate.estimated_years !== 1 ? 's' : ''}`
+              : 'N/A'}
           </p>
+          {experienceEstimate.estimated_months != null && (
+            <p className="mt-1 text-xs text-gray-500">
+              ({experienceEstimate.estimated_months} months total from experience section)
+            </p>
+          )}
           <p className="mt-2 text-xs leading-5 text-gray-500">
             {experienceEstimate.note}
           </p>

@@ -2,11 +2,11 @@ export default function SummaryHero({ filename, scores, actions = null, analysis
   if (!scores) return null
 
   const fitColor =
-    scores.fit_label === 'Strong Fit'
-      ? 'text-green-700 bg-green-100'
+    scores.fit_label === 'Excellent Fit'
+      ? 'text-emerald-700 bg-emerald-100'
       : scores.fit_label === 'Good Fit'
       ? 'text-blue-700 bg-blue-100'
-      : scores.fit_label === 'Moderate Fit'
+      : scores.fit_label === 'Average Fit'
       ? 'text-yellow-700 bg-yellow-100'
       : 'text-red-700 bg-red-100'
 
@@ -32,8 +32,12 @@ export default function SummaryHero({ filename, scores, actions = null, analysis
             {filename}
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-            Quick compatibility snapshot using skill coverage, semantic similarity,
-            evidence validation, and estimated experience alignment.
+            Compatibility snapshot: skill coverage against JD requirements, semantic text similarity,
+            evidence quality (proof behind claimed skills), and estimated experience alignment.
+            <span className="font-medium text-emerald-700"> Excellent ≥85</span> ·
+            <span className="font-medium text-blue-700"> Good 70–84</span> ·
+            <span className="font-medium text-yellow-700"> Average 50–69</span> ·
+            <span className="font-medium text-red-600"> Low &lt;50</span>.
           </p>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -48,6 +52,17 @@ export default function SummaryHero({ filename, scores, actions = null, analysis
           {warningMessage ? (
             <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
               {warningMessage}
+            </div>
+          ) : null}
+
+          {scores.recruiter_action ? (
+            <div className={`mt-4 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium ${
+              scores.shortlist_recommendation
+                ? 'bg-blue-50 text-blue-800'
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              <span className="text-base">{scores.shortlist_recommendation ? '✓' : '○'}</span>
+              <span>{scores.recruiter_action}</span>
             </div>
           ) : null}
         </div>

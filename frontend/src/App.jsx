@@ -28,11 +28,14 @@ import MultiJDComparePanel from './components/MultiJDComparePanel'
 import MiniSummaryCards from './components/MiniSummaryCards'
 import AppBrand from './components/AppBrand'
 import ThemeToggle from './components/ThemeToggle'
+import RecruiterDashboard from './components/RecruiterDashboard'
+import RecommendationPanel from './components/RecommendationPanel'
 
 import {
   analyzeResume,
   tailorResume,
   compareMultipleJDs,
+  batchAnalyzeResumes,
   incrementVisitorCount,
 } from './services/api'
 
@@ -165,6 +168,11 @@ function getTabStatuses(result, tailorResult, compareResult) {
   const [compareError, setCompareError] = useState('')
   const [compareResult, setCompareResult] = useState(null)
 
+  // ── Recruiter / batch screening state ────────────────────────────────────
+  const [batchResult, setBatchResult] = useState(null)
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [batchError, setBatchError] = useState('')
+
   const applyReadiness = getApplyReadiness(result, tailorResult)
   const tabStatuses = getTabStatuses(result, tailorResult, compareResult)
 
@@ -290,6 +298,10 @@ function getTabStatuses(result, tailorResult, compareResult) {
   setCompareError('')
   setCompareResult(null)
 
+  setBatchResult(null)
+  setBatchError('')
+  setBatchLoading(false)
+
   setLastSubmission(null)
 
   setFormResetKey((prev) => prev + 1)
@@ -297,6 +309,22 @@ function getTabStatuses(result, tailorResult, compareResult) {
 
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
+
+  const handleBatchAnalyze = async (formData) => {
+    try {
+      setBatchLoading(true)
+      setBatchError('')
+      setBatchResult(null)
+      setResult(null)
+      setError('')
+      const data = await batchAnalyzeResumes(formData)
+      setBatchResult(data)
+    } catch (err) {
+      setBatchError(err.message || 'Failed to screen candidates.')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
 
   const dashboardTabs = result
     ? [
@@ -321,10 +349,16 @@ function getTabStatuses(result, tailorResult, compareResult) {
                 }
               />
 
-              <CollapsibleSection key="overview-score" title="Score Overview" defaultOpen>
+              {result.recommendation && (
+                <CollapsibleSection key="overview-recommendation" title="Recruiter Recommendation" hint="AI-generated hiring signal: verdict, section scores, strengths, and material gaps" defaultOpen>
+                  <RecommendationPanel recommendation={result.recommendation} />
+                </CollapsibleSection>
+              )}
+
+              <CollapsibleSection key="overview-score" title="Score Overview" hint="8 component scores that make up the overall match — hover each card for details" defaultOpen>
                 <ProgressBarCard scores={result.scores} />
               </CollapsibleSection>  
-              <CollapsibleSection key="overview-skills" title="Matched vs Missing Skills" defaultOpen>
+              <CollapsibleSection key="overview-skills" title="Matched vs Missing Skills" hint="Which JD skills are present, missing, or fuzzy-matched in the resume" defaultOpen>
                 <SkillsSection
                   matchedSkills={result.matched_skills}
                   missingSkills={result.missing_skills}
@@ -332,7 +366,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
                 />
               </CollapsibleSection>
 
-              <CollapsibleSection key="overview-experience" title="Experience Alignment" defaultOpen>
+              <CollapsibleSection key="overview-experience" title="Experience Alignment" hint="Estimated years of experience vs JD requirement" defaultOpen>
                 <ExperiencePanel
                   experienceEstimate={result.experience_estimate}
                   experienceComparison={result.experience_comparison}
@@ -352,6 +386,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
         <CollapsibleSection
           key="recruiter-ats"
           title="ATS Formatting Audit"
+          hint="Will this resume pass automated screening systems? Issues and quick fixes listed below."
           defaultOpen
         >
           <ATSAuditPanel atsAudit={result.ats_audit} />
@@ -362,6 +397,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
         <CollapsibleSection
           key="recruiter-keyword"
           title="Evidence-Backed Keyword Coverage"
+          hint="Key JD terms rated by how well they are supported by evidence in the resume"
           defaultOpen
         >
           <KeywordCoveragePanel keywordCoverage={result.keyword_coverage} />
@@ -374,6 +410,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
           <CollapsibleSection
             key="recruiter-shortlist"
             title="Why-Not-Shortlisted Simulator"
+            hint="Simulates common reasons ATS / recruiters might skip this resume, with action items"
             defaultOpen
           >
             <ShortlistRiskPanel
@@ -418,15 +455,15 @@ function getTabStatuses(result, tailorResult, compareResult) {
 
                   <ExportTailoredResumeButtons tailorResult={tailorResult} />
 
-                  <CollapsibleSection key="optimized-before-after" title="Before vs After Optimization" defaultOpen>
+                  <CollapsibleSection key="optimized-before-after" title="Before vs After Optimization" hint="Side-by-side changes the AI made to improve JD alignment" defaultOpen>
                     <TailorComparisonPanel tailorResult={tailorResult} />
                   </CollapsibleSection>
 
-                  <CollapsibleSection key="optimized-preview" title="Optimized Resume Draft Preview" defaultOpen>
+                  <CollapsibleSection key="optimized-preview" title="Optimized Resume Draft Preview" hint="Full text of the AI-tailored resume, ready to copy or export" defaultOpen>
                     <TailoredResumePanel tailoredResume={tailorResult.tailored_resume} />
                   </CollapsibleSection>
 
-                  <CollapsibleSection key="optimized-gaps" title="Unresolved Gaps and Validation" defaultOpen>
+                  <CollapsibleSection key="optimized-gaps" title="Unresolved Gaps and Validation" hint="Skills the AI could not address — requires manual additions or real experience" defaultOpen>
                     <UnresolvedGapsPanel tailorResult={tailorResult} />
                   </CollapsibleSection>
                 </div>
@@ -463,26 +500,26 @@ function getTabStatuses(result, tailorResult, compareResult) {
           status: tabStatuses.deep_dive,
           content: (
             <div className="space-y-8">
-              <CollapsibleSection key="deep-jd" title="Job Description Requirements" defaultOpen>
+              <CollapsibleSection key="deep-jd" title="Job Description Requirements" hint="Parsed required and preferred skills, experience, and responsibilities" defaultOpen>
                 <JDRequirementsCard jdRequirements={result.jd_requirements} />
               </CollapsibleSection>
 
-              <CollapsibleSection key="deep-categorized" title="Categorized Skills" defaultOpen={false}>
+              <CollapsibleSection key="deep-categorized" title="Categorized Skills" hint="Skills grouped by type (programming, frameworks, tools, soft skills) from both resume and JD" defaultOpen={false}>
                 <CategorizedSkillsPanel
                   categorizedResumeSkills={result.categorized_resume_skills}
                   categorizedJdSkills={result.categorized_jd_skills}
                 />
               </CollapsibleSection>
 
-              <CollapsibleSection key="deep-evidence-summary" title="Evidence Strength Summary" defaultOpen>
+              <CollapsibleSection key="deep-evidence-summary" title="Evidence Strength Summary" hint="How well each matched skill is backed by concrete experience or achievements" defaultOpen>
                 <EvidencePanel evidenceSummary={result.evidence_summary} />
               </CollapsibleSection>
 
-              <CollapsibleSection key="deep-evidence-details" title="Detailed Skill Evidence" defaultOpen={false}>
+              <CollapsibleSection key="deep-evidence-details" title="Detailed Skill Evidence" hint="Per-skill breakdown: which bullet points and sections contain supporting evidence" defaultOpen={false}>
                 <EvidenceDetailsPanel skillEvidenceMap={result.skill_evidence_map} />
               </CollapsibleSection>
 
-              <CollapsibleSection key="deep-ai" title="AI Explanation and Suggestions" defaultOpen>
+              <CollapsibleSection key="deep-ai" title="AI Explanation and Suggestions" hint="Gemini-powered narrative on fit, plus actionable bullet-point improvement suggestions" defaultOpen>
                 <div className="space-y-8">
                   <LLMExplanationPanel explanation={result.llm_explanation} />
                   <SuggestionsSection suggestions={result.suggestions} />
@@ -498,23 +535,23 @@ function getTabStatuses(result, tailorResult, compareResult) {
     
   return (
     <div
-  className={`min-h-screen px-4 py-10 pb-28 transition-colors duration-300 ${
+  className={`min-h-screen px-4 py-6 transition-colors duration-300 ${
     theme === 'dark'
       ? 'bg-slate-950 text-white'
       : 'bg-gradient-to-b from-gray-100 to-gray-200 text-gray-900'
   }`}
 >
-    <div className="mx-auto max-w-7xl space-y-8">
+    <div className="w-full space-y-8">
   <div className="space-y-4">
     <div className="relative flex justify-center">
       <AppBrand onClick={handleReset} />
 
       <div className="absolute right-0 top-1/2 -translate-y-1/2">
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </div>
     </div>
 
-    {result && (
+    {result && !batchResult && (
       <ResultTabs
         key={`tabs-${formResetKey}`}
         tabs={dashboardTabs}
@@ -526,16 +563,46 @@ function getTabStatuses(result, tailorResult, compareResult) {
     )}
   </div>
 
-  {(activeDashboardTab === 'overview' || !result) && (
+  {/* Landing state: features banner full-width, UploadForm below */}
+  {!result && !batchResult && !loading && !batchLoading && !error && (
+    <div className="space-y-6">
+      <EmptyState />
+      <UploadForm
+        key={`upload-${formResetKey}`}
+        onAnalyze={handleAnalyze}
+        onBatchAnalyze={handleBatchAnalyze}
+        loading={loading || batchLoading}
+        resetKey={formResetKey}
+      />
+    </div>
+  )}
+
+  {/* Post-analysis: show UploadForm below overview results */}
+  {result && !batchResult && activeDashboardTab === 'overview' && (
     <UploadForm
-      key={`upload-${formResetKey}`}
+      key={`upload-result-${formResetKey}`}
       onAnalyze={handleAnalyze}
-      loading={loading}
+      onBatchAnalyze={handleBatchAnalyze}
+      loading={loading || batchLoading}
       resetKey={formResetKey}
     />
   )}
 
-  {!loading && !error && !result && <EmptyState />}
+  {/* Recruiter batch screening results */}
+  {batchLoading && <LoadingSpinner />}
+
+  {batchError && (
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow">
+      {batchError}
+    </div>
+  )}
+
+  {batchResult && (
+    <RecruiterDashboard
+      batchResult={batchResult}
+      onReset={handleReset}
+    />
+  )}
 
   {loading && <LoadingSpinner />}
 
@@ -545,7 +612,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
     </div>
   )}
 
-  {result && activeDashboardTab === 'overview' && (
+  {result && !batchResult && activeDashboardTab === 'overview' && (
     <MiniSummaryCards
       result={result}
       tailorResult={tailorResult}
@@ -553,39 +620,12 @@ function getTabStatuses(result, tailorResult, compareResult) {
     />
   )}
 
-  {result && (
+  {result && !batchResult && (
   <div key={`${activeDashboardTab}-${result.filename}`}>
     {activeTabContent}
   </div>
 )}
 </div>
-
-      <footer
-  className={`fixed bottom-0 left-0 right-0 z-50 border-t backdrop-blur-sm transition-colors duration-300 ${
-    theme === 'dark'
-      ? 'border-slate-800 bg-slate-950/95'
-      : 'border-gray-300 bg-white/95'
-  }`}
->
-  <div
-    className={`mx-auto flex max-w-7xl flex-col items-center justify-center gap-1 px-4 py-3 text-center text-sm sm:flex-row sm:gap-4 ${
-      theme === 'dark' ? 'text-slate-300' : 'text-gray-600'
-    }`}
-  >
-    <span className={theme === 'dark' ? 'font-medium text-white' : 'font-medium text-gray-800'}>
-      Created by JATIN SHUKLA 
-    </span>
-    <span className={theme === 'dark' ? 'hidden sm:inline text-slate-500' : 'hidden sm:inline text-gray-400'}>
-      •
-    </span>
-    <span>
-      Visitors till date:{' '}
-      <strong className={theme === 'dark' ? 'text-white' : 'text-gray-900'}>
-        {visitorCount !== null ? visitorCount : '...'}
-      </strong>
-    </span>
-  </div>
-</footer>
     </div>
   )
 }

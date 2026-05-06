@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
 
+const VERDICT_BADGE = {
+  'Strongly Recommended': 'bg-green-100 text-green-800 border-green-300 dark:bg-green-950 dark:text-green-200 dark:border-green-700',
+  'Recommended':          'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800',
+  'Borderline':           'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-950 dark:text-yellow-200 dark:border-yellow-700',
+  'Not Recommended':      'bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800',
+}
+
 export default function MultiJDComparePanel({
   onCompare,
   onClear,
@@ -101,9 +108,16 @@ export default function MultiJDComparePanel({
               <div key={index} className="rounded-2xl border border-gray-200 p-4">
                 <div className="mb-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <h3 className="font-semibold text-gray-900">{item.jd_title}</h3>
-                  <span className="rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
-                    {item.overall_score}%
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {item.recommendation_verdict && (
+                      <span className={`rounded-full border px-3 py-0.5 text-xs font-semibold ${VERDICT_BADGE[item.recommendation_verdict] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                        {item.recommendation_verdict}
+                      </span>
+                    )}
+                    <span className="rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
+                      {item.overall_score}%
+                    </span>
+                  </div>
                 </div>
 
                 <p className="text-sm text-gray-600">Fit Label: {item.fit_label}</p>

@@ -34,14 +34,18 @@ def build_keyword_coverage_report(
             status = resolve_status(normalized)
 
             evidence_sections = []
+            supporting_lines = []
             if normalized in skill_evidence_map:
-                evidence_sections = skill_evidence_map[normalized].get("mentioned_in", [])
+                ev = skill_evidence_map[normalized]
+                evidence_sections = ev.get("mentioned_in", [])
+                supporting_lines = ev.get("supporting_lines", [])[:3]  # cap at 3 lines
 
             item = {
                 "skill": skill,
                 "priority": priority,
                 "status": status,
                 "evidence_sections": evidence_sections,
+                "supporting_lines": supporting_lines,
             }
 
             if normalized not in items_by_skill:
@@ -69,7 +73,15 @@ def build_keyword_coverage_report(
         "strong_count": len([x for x in items if x["status"] == "strong"]),
         "medium_count": len([x for x in items if x["status"] == "medium"]),
         "weak_count": len([x for x in items if x["status"] == "weak"]),
-        "missing_count": len([x for x in items if x["status"] == "missing"]),
+        # Headline missing count should reflect only required/preferred tiers.
+        "missing_count": len([
+            x for x in items
+            if x["status"] == "missing" and x["priority"] in ("required", "preferred")
+        ]),
+        "optional_missing_count": len([
+            x for x in items
+            if x["status"] == "missing" and x["priority"] == "general"
+        ]),
     }
 
     return {
