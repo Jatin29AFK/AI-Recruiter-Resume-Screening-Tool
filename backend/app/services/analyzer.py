@@ -44,6 +44,7 @@ from app.services.career_analyzer import (
     check_education_fit,
     analyze_timeline_gaps,
 )
+from app.services.cert_coverage_analyzer import build_certification_coverage_report
 
 
 def _generate_llm_explanation(payload: dict) -> dict:
@@ -166,6 +167,13 @@ def analyze_resume_text_against_jd(
     industry_fit = analyze_industry_fit(resume_text, active_domain_name, matched_skills, jd_skills)
     language_quality = analyze_language_quality(resume_text, experience_bullets, seniority_level)
     education_fit = check_education_fit(resume_sections, education_requirements)
+
+    cert_coverage = build_certification_coverage_report(
+        jd_required_skills=required_skills,
+        jd_preferred_skills=preferred_skills,
+        resume_sections=resume_sections,
+        raw_resume_text=resume_text,
+    )
 
     # Get scoring weights from JD requirements if available
     scoring_weights = None
@@ -351,6 +359,7 @@ def analyze_resume_text_against_jd(
         "timeline_analysis": timeline_analysis,
         "is_likely_resume": is_likely_resume,
         "resume_file_warning": resume_file_warning,
+        "cert_coverage": cert_coverage,
     }
 
 

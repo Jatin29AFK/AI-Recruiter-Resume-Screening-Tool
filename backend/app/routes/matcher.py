@@ -265,6 +265,16 @@ async def upload_resume_and_jd(
         # Inject the serve ID so the frontend can fetch the original file
         result["resume_serve_id"] = safe_filename
 
+        # Hide certification coverage unless the JD explicitly requires certifications
+        try:
+            non_neg = evaluate_non_negotiables(result, validated_jd, saved_job=None)
+            required_certs = non_neg.get("evaluated_rules", {}).get("mandatory_certifications", [])
+            if not required_certs:
+                result["cert_coverage"] = None
+        except Exception:
+            # On any evaluation error, fall back to including the cert coverage (safe default)
+            pass
+
         return result
 
     except HTTPException:
@@ -533,6 +543,11 @@ async def batch_upload_resumes(
                 non_negotiable_verdict=non_negotiable_result["non_negotiable_verdict"],
                 non_negotiable_reasons=non_negotiable_result["hard_reject_reasons"],
                 review_flags=non_negotiable_result["review_flags"],
+                # Only surface certification coverage when the JD/saved job explicitly
+                # requires certifications. Otherwise hide the panel while still
+                # using certs as evidence for skills elsewhere.
+                cert_coverage=(analysis.get("cert_coverage") if non_negotiable_result
+                               .get("evaluated_rules", {}).get("mandatory_certifications") else None),
             )
             candidates.append(candidate)
             file_outcomes.append({

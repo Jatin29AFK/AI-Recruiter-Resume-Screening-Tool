@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import RecommendationPanel from './RecommendationPanel'
 import NotesPanel from './NotesPanel'
+import CertificationCoveragePanel from './CertificationCoveragePanel'
 import { API_BASE_URL } from '../services/api.js'
 import {
   getCandidateStage,
@@ -515,6 +516,15 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
               </>
             )}
           </section>
+
+          {/* Certification Coverage */}
+          {(candidate.cert_coverage?.has_any_certs || (candidate.cert_coverage && Object.keys(candidate.cert_coverage.jd_skill_cert_map || {}).length > 0)) && (
+            <CertificationCoveragePanel
+              certCoverage={candidate.cert_coverage}
+              jdRequiredSkills={[]}
+              jdPreferredSkills={[]}
+            />
+          )}
 
           {/* Leadership Signals & Red Flags */}
           {(candidate.leadership_signals?.length > 0 || candidate.red_flags?.length > 0 || candidate.over_tailoring_flag || candidate.language_quality?.quality_level) && (

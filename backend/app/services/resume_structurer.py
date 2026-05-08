@@ -3,17 +3,24 @@ import re
 
 EMAIL_REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 PHONE_REGEX = r"(\+?\d[\d\s\-\(\)]{8,}\d)"
-LINKEDIN_REGEX = r"(https?://[^\s]*linkedin\.com/[^\s]+|linkedin\.com/[^\s]+)"
-GITHUB_REGEX = r"(https?://[^\s]*github\.com/[^\s]+|github\.com/[^\s]+)"
+LINKEDIN_REGEX = r"(https?://(?:www\.)?linkedin\.com/[^\s,;\"'<>]+|(?:www\.)?linkedin\.com/in/[^\s,;\"'<>]+)"
+GITHUB_REGEX = r"(https?://(?:www\.)?github\.com/[^\s,;\"'<>]+|(?:www\.)?github\.com/[^\s,;\"'<>]+)"
+
+_TRAILING_PUNCT = re.compile(r"[.,;\"'>\)\]]+$")
 
 
 def get_non_empty_lines(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
-def extract_first_match(pattern: str, text: str) -> str:
+def extract_first_match(pattern: str, text: str, clean_url: bool = False) -> str:
     match = re.search(pattern, text, flags=re.IGNORECASE)
-    return match.group(0).strip() if match else ""
+    if not match:
+        return ""
+    result = match.group(0).strip()
+    if clean_url:
+        result = _TRAILING_PUNCT.sub("", result)
+    return result
 
 
 def looks_like_contact_line(line: str) -> bool:
@@ -201,8 +208,20 @@ def structure_resume_for_tailoring(analysis_result: dict) -> dict:
     current_title = infer_title(lines, full_name)
     email = extract_first_match(EMAIL_REGEX, raw_resume_text)
     phone = extract_first_match(PHONE_REGEX, raw_resume_text)
-    linkedin = extract_first_match(LINKEDIN_REGEX, raw_resume_text)
-    github = extract_first_match(GITHUB_REGEX, raw_resume_text)
+    # Prefer the full https:// URL (from PDF annotations injected at end of text);
+    # fall back to bare domain version found in the text stream.
+    _li_https = r"https?://(?:www\.)?linkedin\.com/[^\s,;\"'<>]+"
+    _li_bare = r"(?:www\.)?linkedin\.com/in/[^\s,;\"'<>]+"
+    linkedin = (
+        extract_first_match(_li_https, raw_resume_text, clean_url=True)
+        or extract_first_match(_li_bare, raw_resume_text, clean_url=True)
+    )
+    _gh_https = r"https?://(?:www\.)?github\.com/[^\s,;\"'<>]+"
+    _gh_bare = r"(?:www\.)?github\.com/[^\s,;\"'<>]+"
+    github = (
+        extract_first_match(_gh_https, raw_resume_text, clean_url=True)
+        or extract_first_match(_gh_bare, raw_resume_text, clean_url=True)
+    )
     location = infer_location(lines)
 
     headline = current_title

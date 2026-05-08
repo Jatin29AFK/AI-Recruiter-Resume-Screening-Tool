@@ -23,6 +23,7 @@ import UnresolvedGapsPanel from './components/UnresolvedGapsPanel'
 import ExportTailoredResumeButtons from './components/ExportTailoredResumeButtons'
 import ATSAuditPanel from './components/ATSAuditPanel'
 import KeywordCoveragePanel from './components/KeywordCoveragePanel'
+import CertificationCoveragePanel from './components/CertificationCoveragePanel'
 import ShortlistRiskPanel from './components/ShortlistRiskPanel'
 import MultiJDComparePanel from './components/MultiJDComparePanel'
 import MiniSummaryCards from './components/MiniSummaryCards'
@@ -401,6 +402,21 @@ function getTabStatuses(result, tailorResult, compareResult) {
           defaultOpen
         >
           <KeywordCoveragePanel keywordCoverage={result.keyword_coverage} />
+        </CollapsibleSection>
+      )}
+
+      {result.cert_coverage && (result.cert_coverage.has_any_certs || Object.keys(result.cert_coverage.jd_skill_cert_map || {}).length > 0) && (
+        <CollapsibleSection
+          key="recruiter-cert"
+          title="Certification Coverage"
+          hint="Certifications found in the resume cross-referenced against JD skills"
+          defaultOpen={result.cert_coverage.has_any_certs}
+        >
+          <CertificationCoveragePanel
+            certCoverage={result.cert_coverage}
+            jdRequiredSkills={result.jd_requirements?.required_skills || []}
+            jdPreferredSkills={result.jd_requirements?.preferred_skills || []}
+          />
         </CollapsibleSection>
       )}
 

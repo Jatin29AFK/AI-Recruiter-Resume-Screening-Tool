@@ -38,7 +38,9 @@ export default function ExperiencePanel({
           </p>
           {experienceEstimate.estimated_months != null && (
             <p className="mt-1 text-xs text-gray-500">
-              ({experienceEstimate.estimated_months} months total from experience section)
+              {experienceEstimate.source === 'experience_section'
+                ? `(${experienceEstimate.estimated_months} months from date ranges)`
+                : `(≈ ${experienceEstimate.estimated_months} months)`}
             </p>
           )}
           <p className="mt-2 text-xs leading-5 text-gray-500">

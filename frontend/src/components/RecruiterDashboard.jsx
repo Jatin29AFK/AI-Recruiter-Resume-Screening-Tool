@@ -188,7 +188,7 @@ const SORT_OPTIONS = [
 const DEFAULT_SCREENING_POLICY = {
   shortlist_threshold: 63,
   review_threshold: 44,
-  policy_version: '2026-05-05.v1',
+  // policy_version: '2026-05-05.v1',
 }
 
 /**

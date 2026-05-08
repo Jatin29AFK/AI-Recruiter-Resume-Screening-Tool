@@ -66,6 +66,43 @@ def extract_month_year_ranges(text: str) -> list[tuple[int, int]]:
     ranges: list[tuple[int, int]] = []
     seen: set[tuple[int, int]] = set()
 
+    # --- Pattern -1: "From Mon YYYY" / "Since Mon YYYY" (no end = present) ----
+    # Common in resumes like "Data Scientist at Acme (From Sep 2024)"
+    p_from_mon = re.compile(
+        rf"(?:from|since)\s+({_MONTH_NAMES_RE})\s+({_YEAR_RE})\b",
+        re.IGNORECASE,
+    )
+    for m in p_from_mon.finditer(text):
+        start_month = _parse_month_name(m.group(1))
+        start_year = int(m.group(2))
+        start_ord = _month_ordinal(start_year, start_month)
+        end_ord = _month_ordinal(_CURRENT_YEAR, _CURRENT_MONTH)
+        if end_ord >= start_ord:
+            key = (start_ord, end_ord)
+            if key not in seen:
+                seen.add(key)
+                ranges.append(key)
+
+    # --- Pattern -0.5: "From YYYY" / "Since YYYY" (year-only, no end = present) ---
+    p_from_year = re.compile(
+        rf"(?:from|since)\s+({_YEAR_RE})(?!\s*(?:[\-–—]|to)\s*\d)",
+        re.IGNORECASE,
+    )
+    for m in p_from_year.finditer(text):
+        start_year = int(m.group(1))
+        start_ord = _month_ordinal(start_year, 1)
+        end_ord = _month_ordinal(_CURRENT_YEAR, _CURRENT_MONTH)
+        if end_ord >= start_ord:
+            already_covered = any(
+                _month_ordinal(start_year, 1) <= s <= _month_ordinal(start_year, 12)
+                for s, _ in seen
+            )
+            if not already_covered:
+                key = (start_ord, end_ord)
+                if key not in seen:
+                    seen.add(key)
+                    ranges.append(key)
+
     # --- Pattern 0: "MM/YYYY – MM/YYYY" or "MM/YYYY – Present" ----------
     # Also handles "MM/YYYY to MM/YYYY" and "MM/YYYY to Present"
     _MM_YYYY = r"(0?[1-9]|1[0-2])/(20\d{2})"

@@ -280,6 +280,7 @@ class MatchAnalysisResponse(BaseModel):
     recommendation: Optional[RecommendationReport] = None
     is_likely_resume: bool = True
     resume_file_warning: Optional[str] = None
+    cert_coverage: Optional[dict] = None
 
 
 class ErrorResponse(BaseModel):
@@ -345,6 +346,8 @@ class CandidateSummary(BaseModel):
     non_negotiable_verdict: str = "pass"  # pass | review | reject
     non_negotiable_reasons: list[str] = []
     review_flags: list[str] = []
+    # Certification-vs-JD-skills coverage
+    cert_coverage: Optional[dict] = None
 
 
 class BatchFileOutcome(BaseModel):

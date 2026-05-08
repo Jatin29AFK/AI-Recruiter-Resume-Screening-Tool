@@ -120,6 +120,23 @@ class ExperienceExtractionRegressionTest(unittest.TestCase):
         self.assertIn("Deep Learning", sections.get("skills", ""))
         self.assertIn("Birds Audio Identification", sections.get("projects", ""))
 
+    def test_khushbu_from_month_year_current_role_counts_in_experience(self):
+        text, sections = self._sections_for_sample_path(
+            "sample-resumes/Resume and JD/AML Rejected cvs/KhushbuParmar.pdf"
+        )
+
+        estimate = estimate_total_experience_years(
+            sections.get("experience", ""),
+            full_resume_text=text,
+            summary_text=sections.get("summary", ""),
+        )
+
+        # Regression: resumes with "From Sep 2024" style current-role dates
+        # used to miss the ongoing role and undercount tenure (~1.3-1.5y).
+        self.assertEqual("experience_section", estimate["source"])
+        self.assertGreaterEqual(estimate["estimated_years"], 3.0)
+        self.assertGreaterEqual(estimate["estimated_months"], 36)
+
     def test_utkarsh_month_name_to_ranges_are_counted_as_full_experience(self):
         text, sections = self._sections_for_sample_path(
             "sample-resumes/Resume and JD/AML Rejected cvs/UtkarshPrakash.pdf"
