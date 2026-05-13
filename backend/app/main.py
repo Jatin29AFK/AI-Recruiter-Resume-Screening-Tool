@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.matcher import router as matcher_router
 from app.routes.jobs import router as jobs_router
 from app.routes.notes import router as notes_router
+from app.routes.inbox import router as inbox_router
 
 load_dotenv()
 
@@ -35,6 +36,7 @@ app.add_middleware(
 app.include_router(matcher_router)
 app.include_router(jobs_router)
 app.include_router(notes_router)
+app.include_router(inbox_router)
 
 @app.get("/")
 def root():

@@ -239,6 +239,105 @@ def _evaluate_certifications(
     return hard_reject_reasons, review_flags
 
 
+def _extract_academic_marks(edu_text: str) -> dict:
+    """Extract simple numeric marks for 10th, 12th and bachelor if present.
+
+    Returns percents as floats when possible, keys: '10', '12', 'btech'.
+    """
+    text = edu_text.lower()
+    marks = {}
+
+    # percent like 85% or 85.5%
+    for level_keywords, key in [
+        (r'(?:10th|class\s*10|ssc|secondary)', '10'),
+        (r'(?:12th|class\s*12|hsc|senior\s*secondary)', '12'),
+        (r'(?:b\.tech|btech|bachelor|b\.e|be\b)', 'btech'),
+    ]:
+        # search for nearby percentage or cgpa
+        pattern_percent = rf'({level_keywords}).{{0,60}}?(\d{{1,2}}(?:\.\d+)?\s*%)'
+        m = re.search(pattern_percent, text, re.IGNORECASE)
+        if m:
+            try:
+                marks[key] = float(m.group(2).replace('%', '').strip())
+                continue
+            except Exception:
+                pass
+
+        # cgpa patterns like 8.5/10 or 3.6/4 or 8.5 cgpa
+        pattern_cgpa = rf'({level_keywords}).{{0,60}}?(\d(?:\.\d+)?)(?:\s*/\s*(\d(?:\.\d+)?))?\s*(?:cgpa|grade|gpa)?'
+        m2 = re.search(pattern_cgpa, text, re.IGNORECASE)
+        if m2:
+            try:
+                val = float(m2.group(2))
+                denom = m2.group(3)
+                if denom:
+                    denom_f = float(denom)
+                    # convert to percent
+                    if denom_f > 4:
+                        # assume scale 100: already percent
+                        percent = (val / denom_f) * 100
+                    else:
+                        percent = (val / denom_f) * 100
+                else:
+                    # assume CGPA out of 10
+                    percent = val * 10 if val <= 10 else val
+                marks[key] = float(round(percent, 2))
+            except Exception:
+                pass
+
+    return marks
+
+
+def _evaluate_academic_marks(
+    analysis: dict,
+    min_marks: dict,
+    hard_fail: bool,
+) -> tuple[list[str], list[str]]:
+    """Evaluate 10th/12th/btech marks against provided minimums.
+
+    min_marks: dict with optional keys 'min_10_marks','min_12_marks','min_btech_marks' (percent floats)
+    """
+    hard_reject_reasons: list[str] = []
+    review_flags: list[str] = []
+
+    if not min_marks:
+        return hard_reject_reasons, review_flags
+
+    sections = analysis.get("resume_sections", {})
+    edu_text = ' '.join([
+        sections.get('education', ''),
+        sections.get('summary', ''),
+        sections.get('other', ''),
+        analysis.get('raw_resume_text', ''),
+    ])
+
+    extracted = _extract_academic_marks(edu_text)
+
+    mapping = [
+        ('min_10_marks', '10', "10th/SSC"),
+        ('min_12_marks', '12', "12th/HSC"),
+        ('min_btech_marks', 'btech', "B.Tech/Bachelor") ,
+    ]
+
+    for cfg_key, extracted_key, label in mapping:
+        if cfg_key not in min_marks or min_marks.get(cfg_key) is None:
+            continue
+        required = float(min_marks.get(cfg_key))
+        found = extracted.get(extracted_key)
+        if found is None:
+            # can't verify
+            review_flags.append(f"{label} minimum {required}% specified but not clearly found in resume.")
+            continue
+        if found < required:
+            message = f"{label} marks {found}% are below required minimum of {required}%"
+            if hard_fail:
+                hard_reject_reasons.append(message)
+            else:
+                review_flags.append(message + " — verify manually before screening out.")
+
+    return hard_reject_reasons, review_flags
+
+
 def evaluate_non_negotiables(
     analysis: dict,
     job_description: str,
@@ -255,6 +354,9 @@ def evaluate_non_negotiables(
     saved_education = list((saved_job or {}).get("education_requirements") or [])
     saved_certs = list((saved_job or {}).get("mandatory_certifications") or [])
     saved_min_experience = (saved_job or {}).get("min_experience")
+    saved_min_10 = (saved_job or {}).get("min_10_marks")
+    saved_min_12 = (saved_job or {}).get("min_12_marks")
+    saved_min_btech = (saved_job or {}).get("min_btech_marks")
 
     fallback_required_skills = jd_info.get("required_skills", [])
     fallback_min_experience = jd_info.get("experience_requirements", {}).get("min_years_experience")
@@ -268,6 +370,11 @@ def evaluate_non_negotiables(
         "required_skill_groups": [] if saved_job else jd_info.get("required_skill_groups", []),
         "min_experience": saved_min_experience if saved_job else fallback_min_experience,
         "education_requirements": saved_education or fallback_education,
+        "min_academic_marks": {
+            "min_10_marks": saved_min_10,
+            "min_12_marks": saved_min_12,
+            "min_btech_marks": saved_min_btech,
+        },
         "mandatory_certifications": saved_certs or fallback_certs,
         "explicit_required_section": explicit_required,
     }
@@ -279,6 +386,7 @@ def evaluate_non_negotiables(
     exp_hard_fail = bool(saved_job or explicit_required)
     edu_hard_fail = bool(saved_job and saved_education)
     cert_hard_fail = bool(saved_job and saved_certs)
+    acad_hard_fail = bool(saved_job and any([saved_min_10, saved_min_12, saved_min_btech]))
 
     for reasons, flags in [
         _evaluate_required_skills(
@@ -291,6 +399,7 @@ def evaluate_non_negotiables(
         _evaluate_min_experience(analysis, rules["min_experience"], exp_hard_fail),
         _evaluate_education(analysis, rules["education_requirements"], edu_hard_fail),
         _evaluate_certifications(analysis, rules["mandatory_certifications"], cert_hard_fail),
+        _evaluate_academic_marks(analysis, rules.get("min_academic_marks", {}), acad_hard_fail),
     ]:
         hard_reject_reasons.extend(reasons)
         review_flags.extend(flags)

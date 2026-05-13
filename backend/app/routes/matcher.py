@@ -5,6 +5,7 @@ import mimetypes
 import logging
 import tempfile
 import threading
+import time
 from typing import List
 from pydantic import BaseModel
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
@@ -372,6 +373,7 @@ async def batch_upload_resumes(
     Returns ranked candidates grouped into Shortlist / Review / Reject buckets.
     """
     try:
+        batch_started_at = time.perf_counter()
         if not resumes or len(resumes) == 0:
             raise HTTPException(status_code=400, detail="Please upload at least one resume.")
 
@@ -403,7 +405,16 @@ async def batch_upload_resumes(
         failed_files: list[str] = []
         file_outcomes: list[dict] = []
 
+        logger.info(
+            "Batch screening started",
+            extra={
+                "resume_count": len(resumes),
+                "has_saved_job": bool(saved_job),
+            },
+        )
+
         for idx, resume_file in enumerate(resumes, start=1):
+            file_started_at = time.perf_counter()
             safe_filename = f"{uuid.uuid4()}_{resume_file.filename}"
             file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -430,6 +441,7 @@ async def batch_upload_resumes(
                     file_path=file_path,
                     filename=resume_file.filename,
                     job_description=validated_jd,
+                    include_llm_explanation=False,
                 )
             except Exception as e:
                 # Log and expose this file as failed analysis for transparency.
@@ -442,6 +454,14 @@ async def batch_upload_resumes(
                     "message": "The file could not be analyzed. Please retry or inspect file format/content.",
                 })
                 continue
+
+            logger.info(
+                "Batch candidate analyzed",
+                extra={
+                    "filename": resume_file.filename,
+                    "elapsed_ms": round((time.perf_counter() - file_started_at) * 1000, 1),
+                },
+            )
 
             scores = analysis["scores"]
             ats_audit = analysis["ats_audit"]
@@ -501,8 +521,6 @@ async def batch_upload_resumes(
                 education_meets_requirement=analysis.get("education_fit", {}).get("meets_requirement"),
                 non_negotiable_flags=analysis.get("non_negotiable_flags", []),
                 seniority_level=analysis.get("seniority_level", "mid"),
-                # Resume text for viewing
-                resume_text=analysis.get("raw_resume_text"),
                 # Serve ID for original file download
                 resume_serve_id=safe_filename,
                 # Evidence summary for detail panel
@@ -568,6 +586,17 @@ async def batch_upload_resumes(
         shortlisted = [c for c in candidates if c.shortlist_verdict == "Shortlist"]
         review = [c for c in candidates if c.shortlist_verdict == "Review"]
         rejected = [c for c in candidates if c.shortlist_verdict == "Reject"]
+
+        logger.info(
+            "Batch screening completed",
+            extra={
+                "resume_count": len(resumes),
+                "candidate_count": len(candidates),
+                "skipped_count": len(bad_files),
+                "failed_count": len(failed_files),
+                "elapsed_ms": round((time.perf_counter() - batch_started_at) * 1000, 1),
+            },
+        )
 
         return BatchAnalysisResponse(
             jd_title=jd_title,

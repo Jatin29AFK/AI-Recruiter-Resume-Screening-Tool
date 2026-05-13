@@ -2,11 +2,44 @@ export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ||
   (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '')
 
+const REQUEST_TIMEOUT_MS = 120000
+
+function getTimeoutErrorMessage(endpoint) {
+  if (endpoint === '/matcher/batch-upload') {
+    return 'Screening is taking longer than expected. Please try fewer resumes at once or retry in a moment.'
+  }
+
+  return 'The request took too long to finish. Please retry.'
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMessage) {
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(timeoutMessage)
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
+}
+
 async function postForm(endpoint, formData) {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: 'POST',
-    body: formData,
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}${endpoint}`,
+    {
+      method: 'POST',
+      body: formData,
+    },
+    getTimeoutErrorMessage(endpoint)
+  )
 
   if (!response.ok) {
     let errorMessage = 'Something went wrong while processing your request.'
@@ -37,9 +70,13 @@ export async function batchAnalyzeResumes(formData) {
 }
 
 export async function incrementVisitorCount() {
-  const response = await fetch(`${API_BASE_URL}/matcher/visitor-count/increment`, {
-    method: 'POST',
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/matcher/visitor-count/increment`,
+    {
+      method: 'POST',
+    },
+    'Updating the visitor counter took too long.'
+  )
 
   if (!response.ok) {
     let errorMessage = 'Failed to update visitor count.'
@@ -58,13 +95,17 @@ export async function incrementVisitorCount() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function fetchJSON(url, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}${url}`,
+    {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
     },
-  })
+    'The request took too long to finish. Please retry.'
+  )
 
   if (!response.ok) {
     let errorMessage = 'Request failed.'
@@ -161,3 +202,22 @@ export async function getCandidateStatuses(candidateIds) {
     body: JSON.stringify({ candidate_ids: candidateIds }),
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inbox (inbound email CV ingestion)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getInboxSummary() {
+  return fetchJSON('/inbox/queue')
+}
+
+export async function getInboxQueue(jobId) {
+  return fetchJSON(`/inbox/queue/${jobId}`)
+}
+
+export async function processInboxQueue(jobId) {
+  return fetchJSON(`/inbox/process/${jobId}`, { method: 'POST' })
+}
+
+// Alias used by InboxPanel to load saved jobs list
+export const fetchJobs = listJobs

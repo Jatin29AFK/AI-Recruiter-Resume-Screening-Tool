@@ -31,6 +31,7 @@ import AppBrand from './components/AppBrand'
 import ThemeToggle from './components/ThemeToggle'
 import RecruiterDashboard from './components/RecruiterDashboard'
 import RecommendationPanel from './components/RecommendationPanel'
+import InboxPanel from './components/InboxPanel'
 
 import {
   analyzeResume,
@@ -583,6 +584,11 @@ function getTabStatuses(result, tailorResult, compareResult) {
   {!result && !batchResult && !loading && !batchLoading && !error && (
     <div className="space-y-6">
       <EmptyState />
+      <InboxPanel onScreeningComplete={(batchRes) => {
+        setBatchResult(batchRes)
+        setResult(null)
+        setError('')
+      }} />
       <UploadForm
         key={`upload-${formResetKey}`}
         onAnalyze={handleAnalyze}
