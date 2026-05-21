@@ -41,6 +41,8 @@ def _build_skill_pattern(skill: str) -> str:
         "r": r"(?<![a-z0-9+#.])r(?![a-z0-9+#.])",
         "go": r"(?<![a-z0-9+#.])go(?![a-z0-9+#.])",
         "java": r"\bjava\b(?!\s*-?\s*script\b)",
+        "react": r"\breact\b(?!\s*-?\s*native\b)",
+        "react native": r"\breact\s*-?\s*native\b",
         "c++": r"(?<![a-z0-9+#.])c\+\+(?![a-z0-9+#.])",
         "c#": r"(?<![a-z0-9+#.])c#(?![a-z0-9+#.])",
         ".net": r"(?<![a-z0-9+#.])\.net(?![a-z0-9+#.])",

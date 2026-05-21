@@ -150,6 +150,7 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
   const bucketMeta = getBucketMeta(policy)
   const bucket = bucketMeta[candidate.shortlist_verdict] || bucketMeta.Review
   const activeScore = candidate._weighted_score ?? candidate.overall_score
+  const hasAdjustedScore = candidate._weighted_score != null && candidate._weighted_score !== candidate.overall_score
   const candidateStage = getCandidateStage(candidate)
   const activeStageRejected = getCandidateStage(candidate) === 'Rejected'
   const rejected =
@@ -463,9 +464,11 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
             <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">Score Breakdown — What Each Score Means</h3>
 
             <ScoreBar
-              label={SCORE_META.overall_score.label}
+              label={hasAdjustedScore ? 'Adjusted Screening Score' : SCORE_META.overall_score.label}
               score={activeScore}
-              explanation={SCORE_META.overall_score.explanation}
+              explanation={hasAdjustedScore
+                ? `Score after active screening controls. Original overall score: ${candidate.overall_score}.`
+                : SCORE_META.overall_score.explanation}
             />
             <ScoreBar
               label={SCORE_META.required_skill_score.label}
@@ -873,7 +876,7 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
               },
               {
                 key: null,
-                label: 'Overall',
+                label: hasAdjustedScore ? 'Adjusted' : 'Overall',
                 value: activeScore,
                 color: 'text-blue-600',
                 ring: '',

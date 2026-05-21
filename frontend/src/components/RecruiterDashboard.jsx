@@ -102,6 +102,30 @@ const SCORE_GUIDE = [
 // Points added/deducted per skill weight tier
 const WEIGHT_POINTS = { High: 15, Medium: 8, Low: 3 }
 const WEIGHT_PENALTY = { High: 8, Medium: 0, Low: 0 }  // penalty if skill is absent
+const DEFAULT_SKILL_WEIGHT = 'Medium'
+const TOTAL_WEIGHT = 100
+const WEIGHT_STEP = 5
+
+const SKILL_ALIASES = {
+  'reactjs': 'react',
+  'react js': 'react',
+  'react.js': 'react',
+  'nodejs': 'node.js',
+  'node js': 'node.js',
+  'nextjs': 'next.js',
+  'next js': 'next.js',
+  'vuejs': 'vue.js',
+  'vue js': 'vue.js',
+  'angularjs': 'angular',
+  'java script': 'javascript',
+  'js': 'javascript',
+  'ts': 'typescript',
+  'py': 'python',
+  'postgres': 'postgresql',
+  'amazon web services': 'aws',
+  'google cloud platform': 'gcp',
+  'rn': 'react native',
+}
 
 // Default scoring component weights (recruiter-adjustable per JD)
 const DEFAULT_SCORING_WEIGHTS = {
@@ -155,18 +179,6 @@ const ROLE_PARAMETER_META = [
   { key: 'careerProgression', label: 'Career progression / stability', description: 'Growth trajectory and stability', color: 'text-teal-600 dark:text-teal-400', accent: 'accent-teal-500' },
 ]
 
-const DEFAULT_CANDIDATE_FILTERS = {
-  search: '',
-  minOverall: '',
-  minRequired: '',
-  minEvidence: '',
-  minAts: '',
-  maxCriticalGaps: '',
-  experienceFit: 'all',
-  hiringStage: 'all',
-  riskType: 'all',
-}
-
 const SORT_OPTIONS = [
   { value: 'overall_score', label: 'Overall Score' },
   { value: 'required_skill_score', label: 'Required Skills' },
@@ -189,6 +201,35 @@ const DEFAULT_SCREENING_POLICY = {
   shortlist_threshold: 63,
   review_threshold: 44,
   // policy_version: '2026-05-05.v1',
+}
+
+function normalizeSkillName(skill) {
+  const cleaned = String(skill || '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[^a-z0-9+#.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return SKILL_ALIASES[cleaned] || cleaned
+}
+
+function hasExactSkillMatch(candidateSkills = [], requiredSkill = '') {
+  const required = normalizeSkillName(requiredSkill)
+  if (!required) return false
+
+  return candidateSkills.some((skill) => normalizeSkillName(skill) === required)
+}
+
+function getValidSkillWeight(weight) {
+  return WEIGHT_POINTS[weight] != null ? weight : DEFAULT_SKILL_WEIGHT
+}
+
+function clampWeight(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  const stepped = Math.round(numeric / WEIGHT_STEP) * WEIGHT_STEP
+  return Math.max(0, Math.min(TOTAL_WEIGHT, stepped))
 }
 
 /**
@@ -267,15 +308,15 @@ function computeRoleParameterScore(candidate, weights) {
  */
 function computeSkillWeightedScore(baseScore, candidate, skillWeights) {
   if (!skillWeights || skillWeights.length === 0) return baseScore
-  const candidateSkills = candidate.matched_skills.map(s => s.toLowerCase())
+  const candidateSkills = candidate.matched_skills || []
   let delta = 0
   for (const sw of skillWeights) {
-    const skillLower = sw.skill.toLowerCase()
-    const hasSkill = candidateSkills.some(s => s.includes(skillLower) || skillLower.includes(s))
+    const weight = getValidSkillWeight(sw.weight)
+    const hasSkill = hasExactSkillMatch(candidateSkills, sw.skill)
     if (hasSkill) {
-      delta += WEIGHT_POINTS[sw.weight] ?? 8
+      delta += WEIGHT_POINTS[weight]
     } else {
-      delta -= WEIGHT_PENALTY[sw.weight] ?? 0
+      delta -= WEIGHT_PENALTY[weight]
     }
   }
   return Math.max(0, Math.min(100, Math.round(baseScore + delta)))
@@ -297,9 +338,9 @@ function applyHRRules(candidates, rules, skillWeights, scoringWeights, scoringFe
 
     // Hard filter: must-have skills (always enforced regardless of scoring model)
     if (rules.enforceMustHaveSkills && mustHave.length > 0) {
-      const candidateSkills = c.matched_skills.map(s => s.toLowerCase())
+      const candidateSkills = c.matched_skills || []
       const absent = mustHave.filter(req =>
-        !candidateSkills.some(s => s.includes(req) || req.includes(s))
+        !hasExactSkillMatch(candidateSkills, req)
       )
       if (absent.length > 0) {
         return {
@@ -380,60 +421,8 @@ function applyHRRules(candidates, rules, skillWeights, scoringWeights, scoringFe
   })
 }
 
-function hasCandidateFilters(filters) {
-  return JSON.stringify(filters) !== JSON.stringify(DEFAULT_CANDIDATE_FILTERS)
-}
-
-function applyCandidateFilters(candidates, filters) {
-  const search = filters.search.trim().toLowerCase()
-  const minOverall = filters.minOverall !== '' ? Number(filters.minOverall) : null
-  const minRequired = filters.minRequired !== '' ? Number(filters.minRequired) : null
-  const minEvidence = filters.minEvidence !== '' ? Number(filters.minEvidence) : null
-  const minAts = filters.minAts !== '' ? Number(filters.minAts) : null
-  const maxCriticalGaps = filters.maxCriticalGaps !== '' ? Number(filters.maxCriticalGaps) : null
-
-  return candidates.filter((c) => {
-    const activeScore = c._weighted_score ?? c.overall_score ?? 0
-    if (search) {
-      const haystack = [
-        c.filename,
-        c.fit_label,
-        c.shortlist_verdict,
-        getCandidateStage(c),
-        ...(c.matched_skills || []),
-        ...(c.missing_skills || []),
-        ...(c.critical_missing_skills || []),
-        ...(c.red_flags || []),
-        ...(c.leadership_signals || []),
-      ].join(' ').toLowerCase()
-      if (!haystack.includes(search)) return false
-    }
-
-    if (minOverall !== null && activeScore < minOverall) return false
-    if (minRequired !== null && (c.required_skill_score ?? 0) < minRequired) return false
-    if (minEvidence !== null && (c.skill_support_score ?? 0) < minEvidence) return false
-    if (minAts !== null && (c.ats_score ?? 0) < minAts) return false
-    if (maxCriticalGaps !== null && (c.critical_missing_skills?.length ?? 0) > maxCriticalGaps) return false
-
-    if (filters.experienceFit === 'meets' && c.experience_meets_requirement !== true) return false
-    if (filters.experienceFit === 'below' && c.experience_meets_requirement !== false) return false
-    if (filters.experienceFit === 'unknown' && c.experience_meets_requirement !== null && c.experience_meets_requirement !== undefined) return false
-
-    if (filters.hiringStage !== 'all' && getCandidateStage(c) !== filters.hiringStage) return false
-
-    if (filters.riskType === 'critical_gaps' && (c.critical_missing_skills?.length ?? 0) === 0) return false
-    if (filters.riskType === 'ats_risk' && (c.ats_score ?? 0) >= 60) return false
-    if (filters.riskType === 'low_evidence' && (c.skill_support_score ?? 0) >= 45) return false
-    if (filters.riskType === 'over_tailored' && !c.over_tailoring_flag) return false
-    if (filters.riskType === 'red_flags' && (c.red_flags?.length ?? 0) === 0) return false
-    if (filters.riskType === 'education_missing' && c.education_meets_requirement !== false) return false
-
-    return true
-  })
-}
-
 function getSortValue(candidate, sortBy) {
-  if (sortBy === 'overall_score') return candidate._weighted_score ?? candidate.overall_score ?? 0
+  if (sortBy === 'overall_score') return candidate.overall_score ?? 0
   if (sortBy === 'weighted_score') return candidate._weighted_score ?? candidate.overall_score ?? 0
   if (sortBy === 'matched_skills_count') return candidate.matched_skills?.length ?? 0
   if (sortBy === 'critical_gaps_asc') return candidate.critical_missing_skills?.length ?? 0
@@ -464,7 +453,7 @@ function sortCandidates(candidates, sortBy) {
 
 function exportCandidatesCSV(candidates, jdTitle) {
   const headers = [
-    'Rank', 'Filename', 'Bucket', 'Hiring Stage', 'Overall Score', 'ATS Score',
+    'Rank', 'Filename', 'Bucket', 'Hiring Stage', 'Original Overall Score', 'Adjusted Screening Score', 'ATS Score',
     'Required Skills', 'Evidence Score', 'Matched Skills Count',
     'Critical Gaps', 'Experience (yrs)', 'Exp Meets Req',
     'Strong Keywords', 'ATS Issues', 'Rule Note',
@@ -474,6 +463,7 @@ function exportCandidatesCSV(candidates, jdTitle) {
     `"${(c.filename || '').replace(/"/g, '""')}"`,
     c.shortlist_verdict,
     getCandidateStage(c),
+    c.overall_score,
     c._weighted_score ?? c.overall_score,
     c.ats_score,
     c.required_skills_count > 0 ? `${c.required_skills_matched_count}/${c.required_skills_count} (${c.required_skill_score})` : 'N/A',
@@ -514,14 +504,13 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
   })
   const [skillWeights, setSkillWeights] = useState([])  // [{skill: 'Python', weight: 'High'}]
   const [swSkillInput, setSwSkillInput] = useState('')
-  const [swWeightInput, setSwWeightInput] = useState('Priority level')
+  const [swWeightInput, setSwWeightInput] = useState(DEFAULT_SKILL_WEIGHT)
   const [scoringWeights, setScoringWeights] = useState({ ...DEFAULT_SCORING_WEIGHTS })
   const [scoringFeatures, setScoringFeatures] = useState({ ...DEFAULT_SCORING_FEATURES })
   const [roleParameterWeights, setRoleParameterWeights] = useState({ ...DEFAULT_ROLE_PARAMETER_WEIGHTS })
   const [useSignalScoring, setUseSignalScoring] = useState(false)
   const [useRoleParameterScoring, setUseRoleParameterScoring] = useState(true)
   const [showScoringWeights, setShowScoringWeights] = useState(true)
-  const [candidateFilters, setCandidateFilters] = useState({ ...DEFAULT_CANDIDATE_FILTERS })
   const [statusSyncError, setStatusSyncError] = useState('')
 
   useEffect(() => {
@@ -581,6 +570,17 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
   const { jd_title, total_candidates, all_candidates } = batchResult
   const skippedFiles = batchResult.skipped_files || []
   const failedFiles = batchResult.failed_files || []
+  const activeScoringWeightKeys = SCORING_WEIGHT_META
+    .filter((meta) => scoringFeatures[meta.key] !== false)
+    .map((meta) => meta.key)
+  const roleParameterWeightKeys = ROLE_PARAMETER_META.map((meta) => meta.key)
+  const scoringWeightTotal = Object.values(scoringWeights).reduce((sum, value) => sum + Number(value || 0), 0)
+  const activeScoringWeightTotal = activeScoringWeightKeys.reduce((sum, key) => sum + Number(scoringWeights[key] || 0), 0)
+  const roleParameterWeightTotal = roleParameterWeightKeys.reduce((sum, key) => sum + Number(roleParameterWeights[key] || 0), 0)
+  const signalScoringReady = activeScoringWeightKeys.length > 0 && activeScoringWeightTotal === TOTAL_WEIGHT
+  const roleParameterScoringReady = roleParameterWeightTotal === TOTAL_WEIGHT
+  const applySignalScoring = useSignalScoring && signalScoringReady
+  const applyRoleParameterScoring = useRoleParameterScoring && roleParameterScoringReady
 
   const candidatesWithStatus = all_candidates.map((candidate) => {
     const candidateId = getCandidateId(candidate)
@@ -597,11 +597,10 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
     scoringWeights,
     scoringFeatures,
     roleParameterWeights,
-    useSignalScoring,
-    useRoleParameterScoring,
+    applySignalScoring,
+    applyRoleParameterScoring,
   )
-  const candidateFiltersActive = hasCandidateFilters(candidateFilters)
-  const effectiveCandidates = applyCandidateFilters(ruledCandidates, candidateFilters)
+  const effectiveCandidates = ruledCandidates
   const effectiveShortlisted = effectiveCandidates.filter(c => c.shortlist_verdict === 'Shortlist')
   const effectiveReview = effectiveCandidates.filter(c => c.shortlist_verdict === 'Review')
   const effectiveRejected = effectiveCandidates.filter(c => c.shortlist_verdict === 'Reject')
@@ -620,14 +619,12 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
     useRoleParameterScoring !== true ||
     scoringWeightsChanged ||
     scoringFeaturesChanged ||
-    roleParameterWeightsChanged ||
-    candidateFiltersActive
+    roleParameterWeightsChanged
   const weightsActive =
     skillWeights.length > 0 ||
-    useSignalScoring ||
-    (useRoleParameterScoring && roleParameterWeightsChanged) ||
-    scoringWeightsChanged ||
-    scoringFeaturesChanged
+    applySignalScoring ||
+    (applyRoleParameterScoring && roleParameterWeightsChanged) ||
+    (applySignalScoring && (scoringWeightsChanged || scoringFeaturesChanged))
 
   const tabCandidates = {
     all: effectiveCandidates,
@@ -638,6 +635,20 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
 
   const sorted = sortCandidates(tabCandidates[activeTab] || [], sortBy)
   const tableCandidates = sortCandidates(effectiveCandidates, sortBy)
+  const selectedCandidateForPanel = selectedCandidate
+    ? effectiveCandidates.find((candidate) => getCandidateId(candidate) === getCandidateId(selectedCandidate)) || selectedCandidate
+    : null
+  const handleScoringFeatureToggle = (key, enabled) => {
+    setScoringFeatures((prev) => ({ ...prev, [key]: enabled }))
+  }
+
+  const handleScoringWeightChange = (key, value) => {
+    setScoringWeights((prev) => ({ ...prev, [key]: clampWeight(value) }))
+  }
+
+  const handleRoleParameterWeightChange = (key, value) => {
+    setRoleParameterWeights((prev) => ({ ...prev, [key]: clampWeight(value) }))
+  }
 
   const handleCandidateStatusChange = async (candidate, newStatus, candidateId = getCandidateId(candidate)) => {
     try {
@@ -659,9 +670,9 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
     <div className="space-y-6">
 
       {/* Detail panel (slide-in) */}
-      {selectedCandidate && (
+      {selectedCandidateForPanel && (
         <CandidateDetailPanel
-          candidate={selectedCandidate}
+          candidate={selectedCandidateForPanel}
           policy={policy}
           onClose={() => setSelectedCandidate(null)}
         />
@@ -673,7 +684,7 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
         {skippedFiles.length > 0 && (
           <div className="rounded-2xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-950 p-4 text-yellow-800 dark:text-yellow-200 mb-4">
             <p className="font-semibold">Some uploaded files were skipped</p>
-            <p className="mt-1 text-sm">The following files did not appear to be resumes (missing headings or contact info) and were ignored:</p>
+            <p className="mt-1 text-sm">The following files were strongly classified as non-resume inputs and were ignored:</p>
             <ul className="mt-2 list-disc list-inside text-sm">
               {skippedFiles.map((f, i) => (
                 <li key={i}>{f}</li>
@@ -730,7 +741,7 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                   : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700'
               }`}
             >
-              ⚙ {rulesModified ? 'Filters Active' : 'Filters'}
+              ⚙ {rulesModified ? 'Controls Active' : 'Controls'}
             </button>
             <button
               type="button"
@@ -768,7 +779,7 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
       {showRulesPanel && (
         <div className="rounded-2xl border border-blue-200 dark:border-blue-800 bg-slate-50 dark:bg-slate-800 p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Quick Filters</h3>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Screening Controls</h3>
             {rulesModified && (
               <button
                 type="button"
@@ -780,7 +791,6 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                   setUseSignalScoring(false)
                   setUseRoleParameterScoring(true)
                   setSkillWeights([])
-                  setCandidateFilters({ ...DEFAULT_CANDIDATE_FILTERS })
                   setSortBy('overall_score')
                 }}
                 className="text-xs text-slate-500 dark:text-slate-400 underline hover:no-underline"
@@ -843,21 +853,20 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                   Use Signal-Based Scoring (new model)
                 </label>
                 <p className="text-xs text-slate-500 dark:text-slate-400 italic mb-2">
-                  Tick/untick any scoring signal and adjust its weight. Scores and shortlist/review/reject update instantly.
-                  Active features are normalized automatically.
+                  Tick/untick any scoring signal and adjust weights yourself. This model applies only when active allocation is exactly 100%.
                 </p>
                 {SCORING_WEIGHT_META.map(m => (
                     <div key={m.key} className="space-y-0.5">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <label className="inline-flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={scoringFeatures[m.key] !== false}
-                              onChange={(e) => setScoringFeatures(prev => ({ ...prev, [m.key]: e.target.checked }))}
-                              disabled={!useSignalScoring}
-                              className="accent-blue-500"
-                            />
+	                            <input
+	                              type="checkbox"
+	                              checked={scoringFeatures[m.key] !== false}
+	                              onChange={(e) => handleScoringFeatureToggle(m.key, e.target.checked)}
+	                              disabled={!useSignalScoring}
+	                              className="accent-blue-500"
+	                            />
                             <span className={`text-xs font-semibold ${m.color}`}>{m.label}</span>
                           </label>
                           <p className="text-xs text-gray-500 dark:text-slate-400">{m.description}</p>
@@ -865,34 +874,27 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                         <span className={`text-sm font-bold w-14 text-right ${m.color}`}>
                           {scoringFeatures[m.key] !== false ? `${scoringWeights[m.key]}%` : 'Off'}
                         </span>
-                      </div>
-                      <input
-                        type="range" min="0" max="60" step="5"
-                        value={scoringWeights[m.key]}
-                        onChange={e => setScoringWeights(prev => ({ ...prev, [m.key]: Number(e.target.value) }))}
-                        disabled={!useSignalScoring || scoringFeatures[m.key] === false}
-                        className={`w-full ${m.accent} ${(!useSignalScoring || scoringFeatures[m.key] === false) ? 'opacity-40 cursor-not-allowed' : ''}`}
-                      />
+	                      </div>
+	                      <input
+	                        type="range" min="0" max="100" step="5"
+	                        value={scoringWeights[m.key]}
+	                        onChange={e => handleScoringWeightChange(m.key, Number(e.target.value))}
+	                        disabled={!useSignalScoring || scoringFeatures[m.key] === false}
+	                        className={`w-full ${m.accent} ${(!useSignalScoring || scoringFeatures[m.key] === false) ? 'opacity-40 cursor-not-allowed' : ''}`}
+	                      />
                     </div>
-                  ))}
-                {/* Total indicator */}
-                {(() => {
-                  const total = Object.values(scoringWeights).reduce((a, b) => a + b, 0)
-                  const activeTotal = SCORING_WEIGHT_META.reduce((sum, meta) => {
-                    if (scoringFeatures[meta.key] === false) return sum
-                    return sum + Number(scoringWeights[meta.key] || 0)
-                  }, 0)
-                  const activeCount = SCORING_WEIGHT_META.filter(meta => scoringFeatures[meta.key] !== false).length
-                  return (
-                    <div className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold text-center ${
-                      activeCount > 0
-                        ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
-                        : 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-700'
-                    }`}>
-                      Total configured: {total}% · Active weight: {activeTotal}% · {activeCount > 0 ? `${activeCount} feature${activeCount !== 1 ? 's' : ''} active` : 'Enable at least one feature'}
-                    </div>
-                  )
-                })()}
+	                  ))}
+	                {/* Total indicator */}
+		                <div className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold text-center border ${
+		                  signalScoringReady
+		                    ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700'
+		                    : 'bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700'
+		                }`}>
+		                  Total configured: {scoringWeightTotal}% · Active allocation: {activeScoringWeightTotal}% · {activeScoringWeightKeys.length} feature{activeScoringWeightKeys.length !== 1 ? 's' : ''} active
+		                  {useSignalScoring && !signalScoringReady && (
+		                    <span className="block mt-1">Complete active allocation to exactly 100% to apply signal-based scoring.</span>
+		                  )}
+		                </div>
               </div>
             )}
 
@@ -928,7 +930,7 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
               </label>
 
               <p className="text-xs text-slate-500 dark:text-slate-400 italic mb-2">
-                This is the original recruiter model you asked to keep. You can run this separately or together with the signal-based model.
+                {/* This is the original recruiter model you asked to keep. You can run this separately or together with the signal-based model. */}
               </p>
 
               {ROLE_PARAMETER_META.map((m) => (
@@ -940,28 +942,39 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                     </div>
                     <span className={`text-sm font-bold w-14 text-right ${m.color}`}>{roleParameterWeights[m.key]}%</span>
                   </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="60"
-                    step="5"
-                    value={roleParameterWeights[m.key]}
-                    onChange={e => setRoleParameterWeights(prev => ({ ...prev, [m.key]: Number(e.target.value) }))}
-                    disabled={!useRoleParameterScoring}
-                    className={`w-full ${m.accent} ${!useRoleParameterScoring ? 'opacity-40 cursor-not-allowed' : ''}`}
-                  />
-                </div>
-              ))}
+	                  <input
+	                    type="range"
+	                    min="0"
+	                    max="100"
+	                    step="5"
+	                    value={roleParameterWeights[m.key]}
+	                    onChange={e => handleRoleParameterWeightChange(m.key, Number(e.target.value))}
+	                    disabled={!useRoleParameterScoring}
+	                    className={`w-full ${m.accent} ${!useRoleParameterScoring ? 'opacity-40 cursor-not-allowed' : ''}`}
+	                  />
+	                </div>
+	              ))}
 
-              <div className="mt-2 rounded-lg px-3 py-2 text-xs font-semibold text-center bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
-                Blend behavior: {useSignalScoring && useRoleParameterScoring
-                  ? 'both enabled → final score is the average of both models'
-                  : useSignalScoring
-                    ? 'signal-based model only'
-                    : useRoleParameterScoring
-                      ? 'role-parameter model only'
-                      : 'both disabled → falls back to backend overall score'}
-              </div>
+		              <div className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold text-center border ${
+		                roleParameterScoringReady
+		                  ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700'
+		                  : 'bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700'
+		              }`}>
+		                Role parameter allocation: {roleParameterWeightTotal}%
+		                {useRoleParameterScoring && !roleParameterScoringReady && (
+		                  <span className="block mt-1">Complete role parameter allocation to exactly 100% to apply this model.</span>
+		                )}
+		              </div>
+
+		              <div className="mt-2 rounded-lg px-3 py-2 text-xs font-semibold text-center bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
+	                Blend behavior: {applySignalScoring && applyRoleParameterScoring
+	                  ? 'both enabled → final score is the average of both models'
+	                  : applySignalScoring
+	                    ? 'signal-based model only'
+	                    : applyRoleParameterScoring
+	                      ? 'role-parameter model only'
+	                      : 'no valid scoring model active → falls back to backend overall score'}
+	              </div>
             </div>
           </div>
 
@@ -1025,113 +1038,8 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
               <span className="font-semibold text-yellow-600">{effectiveReview.length} Review</span>
               {' · '}
               <span className="font-semibold text-red-500">{effectiveRejected.length} Reject</span>
-              {candidateFiltersActive && (
-                <span className="ml-1 text-blue-600 dark:text-blue-400">
-                  · showing {effectiveCandidates.length}/{ruledCandidates.length} after filters
-                </span>
-              )}
             </p>
           )}
-
-          {/* Candidate result filters */}
-          <div className="mt-2 border-t border-gray-200 dark:border-slate-700 pt-4 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Candidate Filters</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Narrow results by score, stage, experience, and recruiter risk signals.
-                </p>
-              </div>
-              {candidateFiltersActive && (
-                <button
-                  type="button"
-                  onClick={() => setCandidateFilters({ ...DEFAULT_CANDIDATE_FILTERS })}
-                  className="text-xs text-slate-500 dark:text-slate-400 underline hover:no-underline"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-semibold text-gray-800 dark:text-slate-200">Search candidate / skill / gap</label>
-                <input
-                  type="text"
-                  value={candidateFilters.search}
-                  onChange={e => setCandidateFilters(f => ({ ...f, search: e.target.value }))}
-                  placeholder="e.g. Python, AWS, low evidence"
-                  className="w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-800 dark:text-slate-200">Hiring stage</label>
-                <select
-                  value={candidateFilters.hiringStage}
-                  onChange={e => setCandidateFilters(f => ({ ...f, hiringStage: e.target.value }))}
-                  className="w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="all">All stages</option>
-                  {HIRING_STAGE_OPTIONS.map(stage => (
-                    <option key={stage} value={stage}>{stage}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-800 dark:text-slate-200">Experience fit</label>
-                <select
-                  value={candidateFilters.experienceFit}
-                  onChange={e => setCandidateFilters(f => ({ ...f, experienceFit: e.target.value }))}
-                  className="w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="all">All</option>
-                  <option value="meets">Meets requirement</option>
-                  <option value="below">Below requirement</option>
-                  <option value="unknown">Unknown</option>
-                </select>
-              </div>
-
-              {[
-                ['minOverall', 'Min overall', '70'],
-                ['minRequired', 'Min required %', '60'],
-                ['minEvidence', 'Min evidence', '50'],
-                ['minAts', 'Min ATS', '60'],
-                ['maxCriticalGaps', 'Max critical gaps', '2'],
-              ].map(([key, label, placeholder]) => (
-                <div key={key} className="space-y-1.5">
-                  <label className="text-xs font-semibold text-gray-800 dark:text-slate-200">{label}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max={key === 'maxCriticalGaps' ? 50 : 100}
-                    value={candidateFilters[key]}
-                    onChange={e => setCandidateFilters(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-              ))}
-
-              <div className="space-y-1.5 lg:col-span-3">
-                <label className="text-xs font-semibold text-gray-800 dark:text-slate-200">Risk signal</label>
-                <select
-                  value={candidateFilters.riskType}
-                  onChange={e => setCandidateFilters(f => ({ ...f, riskType: e.target.value }))}
-                  className="w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="all">All risk signals</option>
-                  <option value="critical_gaps">Has critical gaps</option>
-                  <option value="ats_risk">ATS risk</option>
-                  <option value="low_evidence">Low evidence quality</option>
-                  <option value="over_tailored">Possibly over-tailored</option>
-                  <option value="red_flags">Has recruiter red flags</option>
-                  <option value="education_missing">Education requirement not evidenced</option>
-                </select>
-              </div>
-            </div>
-          </div>
 
           {/* ── Skill Weightage ── */}
           <div className="mt-2 border-t border-gray-200 dark:border-slate-700 pt-4 space-y-3">
@@ -1171,8 +1079,8 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
               onKeyDown={e => {
                 if (e.key === 'Enter' && swSkillInput.trim()) {
                   const skill = swSkillInput.trim()
-                  if (!skillWeights.some(sw => sw.skill.toLowerCase() === skill.toLowerCase())) {
-                    setSkillWeights(prev => [...prev, { skill, weight: swWeightInput }])
+                  if (!skillWeights.some(sw => normalizeSkillName(sw.skill) === normalizeSkillName(skill))) {
+                    setSkillWeights(prev => [...prev, { skill, weight: getValidSkillWeight(swWeightInput) }])
                   }
                   setSwSkillInput('')
                 }
@@ -1186,8 +1094,8 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
               onClick={() => {
                 const skill = swSkillInput.trim()
                 if (!skill) return
-                if (!skillWeights.some(sw => sw.skill.toLowerCase() === skill.toLowerCase())) {
-                  setSkillWeights(prev => [...prev, { skill, weight: swWeightInput }])
+                if (!skillWeights.some(sw => normalizeSkillName(sw.skill) === normalizeSkillName(skill))) {
+                  setSkillWeights(prev => [...prev, { skill, weight: getValidSkillWeight(swWeightInput) }])
                 }
                 setSwSkillInput('')
               }}
@@ -1290,7 +1198,7 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">Full Comparison Table</p>
           <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
             Click any row for details
-            {(rulesModified || weightsActive) && <span className="ml-1 text-purple-600 dark:text-purple-400 font-semibold">· Filters applied</span>}
+            {(rulesModified || weightsActive) && <span className="ml-1 text-purple-600 dark:text-purple-400 font-semibold">· Controls applied</span>}
           </p>
         </div>
         <table className="min-w-full text-sm">
@@ -1298,7 +1206,7 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
             <tr className="border-b border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-800">
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400">#</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400">Candidate</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-slate-400" title="Weighted overall fit score">Overall ↕</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-slate-400" title="Original backend overall fit score">Overall ↕</th>
               {weightsActive && <th className="px-4 py-3 text-center text-xs font-semibold text-orange-500 dark:text-orange-400" title="Score adjusted for your custom skill weights">Wtd. Score ★</th>}
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-slate-400" title="ATS formatting quality">ATS</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-slate-400" title="% of required JD skills present">Req. Skills</th>
@@ -1313,7 +1221,8 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
           </thead>
           <tbody>
             {tableCandidates.map((c, i) => {
-              const activeScore = c._weighted_score ?? c.overall_score
+              const originalScore = c.overall_score ?? 0
+              const adjustedScore = c._weighted_score ?? originalScore
               const bucketClass =
                 c.shortlist_verdict === 'Shortlist'
                   ? 'text-green-700 dark:text-green-400'
@@ -1321,8 +1230,8 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                   ? 'text-yellow-700 dark:text-yellow-400'
                   : 'text-red-600 dark:text-red-400'
               const scoreColor =
-                activeScore >= 70 ? 'text-green-600 dark:text-green-400 font-bold'
-                : activeScore >= 50 ? 'text-yellow-600 dark:text-yellow-400 font-bold'
+                originalScore >= 70 ? 'text-green-600 dark:text-green-400 font-bold'
+                : originalScore >= 50 ? 'text-yellow-600 dark:text-yellow-400 font-bold'
                 : 'text-red-500 dark:text-red-400 font-bold'
 
               return (
@@ -1335,19 +1244,19 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                 >
                   <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{i + 1}</td>
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[180px] truncate">{c.filename}</td>
-                  <td className={`px-4 py-3 text-center ${scoreColor}`}>{activeScore}</td>
+                  <td className={`px-4 py-3 text-center ${scoreColor}`}>{originalScore}</td>
                   {weightsActive && (
                     <td className={`px-4 py-3 text-center font-bold ${
-                      (c._weighted_score ?? c.overall_score) >= 70 ? 'text-orange-600 dark:text-orange-400'
-                      : (c._weighted_score ?? c.overall_score) >= 50 ? 'text-yellow-600 dark:text-yellow-400'
+                      adjustedScore >= 70 ? 'text-orange-600 dark:text-orange-400'
+                      : adjustedScore >= 50 ? 'text-yellow-600 dark:text-yellow-400'
                       : 'text-red-500 dark:text-red-400'
                     }`}>
-                      {c._weighted_score ?? c.overall_score}
-                      {c._weighted_score != null && c._weighted_score !== c.overall_score && (
+                      {adjustedScore}
+                      {c._weighted_score != null && c._weighted_score !== originalScore && (
                         <span className={`ml-1 text-xs ${
-                          c._weighted_score > c.overall_score ? 'text-green-500' : 'text-red-400'
+                          c._weighted_score > originalScore ? 'text-green-500' : 'text-red-400'
                         }`}>
-                          ({c._weighted_score > c.overall_score ? '+' : ''}{c._weighted_score - c.overall_score})
+                          ({c._weighted_score > originalScore ? '+' : ''}{c._weighted_score - originalScore})
                         </span>
                       )}
                     </td>

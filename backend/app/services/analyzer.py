@@ -1,4 +1,5 @@
-from app.services.parser import extract_resume_text, is_likely_resume_text
+from app.services.parser import extract_resume_text
+from app.services.resume_detector import evaluate_resume_document
 from app.services.preprocess import clean_text, lemmatize_text
 from app.services.extractor import (
     extract_skills_from_text,
@@ -56,14 +57,31 @@ def _generate_llm_explanation(payload: dict) -> dict:
         return fallback_provider.generate_explanation(payload)
 
 
+def _remove_satisfied_group_alternatives(
+    missing_skills: list[str],
+    matched_skills: list[str],
+    required_skill_groups: list[list[str]] | None,
+) -> list[str]:
+    missing_set = set(missing_skills)
+    matched_set = set(matched_skills)
+
+    for group in required_skill_groups or []:
+        group_set = set(group)
+        if group_set & matched_set:
+            missing_set -= group_set
+
+    return sorted(missing_set)
+
+
 def analyze_resume_text_against_jd(
     resume_text: str,
     job_description: str,
     filename: str = "resume.txt",
     include_llm_explanation: bool = True,
 ) -> dict:
-    # Quick resume-detection heuristic to surface non-resume uploads early
-    is_likely_resume, resume_file_warning = is_likely_resume_text(resume_text)
+    resume_detection = evaluate_resume_document(text=resume_text, filename=filename)
+    is_likely_resume = resume_detection.get("final_label") != "reject"
+    resume_file_warning = resume_detection.get("warning_message")
 
     resume_sections = split_resume_into_sections(resume_text)
 
@@ -104,6 +122,11 @@ def analyze_resume_text_against_jd(
 
     matched_skills = exact_skill_match(resume_skills, jd_skills_for_matching)
     missing_skills = missing_skill_match(resume_skills, jd_skills_for_matching)
+    missing_skills = _remove_satisfied_group_alternatives(
+        missing_skills,
+        matched_skills,
+        required_skill_groups,
+    )
     fuzzy_matches = fuzzy_skill_match(resume_skills, jd_skills_for_matching)
 
     semantic_score = semantic_text_similarity(lemmatized_resume, lemmatized_jd)
@@ -249,6 +272,8 @@ def analyze_resume_text_against_jd(
         jd_skills_count=len(jd_skills),
     )
     analysis_meta["active_domain"] = active_domain
+    if resume_file_warning:
+        analysis_meta["warning_message"] = resume_file_warning
 
     llm_explanation = None
     if include_llm_explanation:
@@ -359,6 +384,7 @@ def analyze_resume_text_against_jd(
         "timeline_analysis": timeline_analysis,
         "is_likely_resume": is_likely_resume,
         "resume_file_warning": resume_file_warning,
+        "resume_detection": resume_detection,
         "cert_coverage": cert_coverage,
     }
 

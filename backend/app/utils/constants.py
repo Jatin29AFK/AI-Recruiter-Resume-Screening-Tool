@@ -8,7 +8,8 @@ DOMAIN_SKILL_PACKS = {
         "keywords": [
             "software engineer", "frontend", "backend", "full stack", "web developer",
             "react", "node.js", "express", "rest api", "typescript", "javascript",
-            "sql", "database", "api", "web application"
+            "sql", "database", "api", "web application", "mobile developer",
+            "react native", "flutter"
         ],
         "categories": {
             "programming_languages": [
@@ -18,6 +19,9 @@ DOMAIN_SKILL_PACKS = {
                 "react", "node.js", "nodejs", "express", "fastapi", "flask", "django",
                 "bootstrap", "tailwind", "rest api", "restful api", "api development",
                 "nestjs", "spring boot", "falcon"
+            ],
+            "mobile_frameworks": [
+                "react native", "flutter"
             ],
             "databases": [
                 "postgresql", "mysql", "mongodb", "sqlite", "redis"
@@ -42,6 +46,9 @@ DOMAIN_SKILL_PACKS = {
             "springboot": "spring boot",
             "spring-boot": "spring boot",
             "ts": "typescript",
+            "react-native": "react native",
+            "reactnative": "react native",
+            "flutter sdk": "flutter",
         },
     },
 
@@ -169,3 +176,33 @@ def merge_all_aliases() -> dict:
 
 SKILL_CATEGORIES = merge_all_categories()
 SKILL_ALIASES = merge_all_aliases()
+
+
+# Resume detection tuning knobs
+RESUME_DETECTION_MIN_TEXT_CHARS = 300
+RESUME_DETECTION_GRACE_BAND = 0.08
+RESUME_DETECTION_REJECT_MARGIN = 0.05
+
+RESUME_DETECTION_POSITIVE_WEIGHTS = {
+    "text_length": 0.25,
+    "section_keywords": 0.20,
+    "date_density": 0.15,
+    "skill_overlap": 0.20,
+    "bullet_format": 0.10,
+    "noun_density": 0.10,
+}
+
+RESUME_DETECTION_NEGATIVE_WEIGHTS = {
+    "legal_language": 0.30,
+    "academic_paper": 0.20,
+    "essay_style": 0.15,
+    "invoice_receipt": 0.18,
+    "travel_booking": 0.24,
+    "installation_guide": 0.24,
+    "learning_notes": 0.22,
+    "feedback_document": 0.22,
+    "code_heavy": 0.15,
+    "agent_change_log": 0.22,
+    "form_template": 0.12,
+    "notes": 0.10,
+}

@@ -66,6 +66,17 @@ def _looks_like_example_group(line: str) -> bool:
     return re.search(r"\bsuch as\b|\be\.g\.\b|\bfor example\b", line.lower()) is not None
 
 
+def _extract_or_skill_group(line: str, domain_name: str | None = None) -> list[str]:
+    if not re.search(r"\b(or|either)\b", line.lower()):
+        return []
+
+    skills = [
+        normalize_skill(skill, domain_name)
+        for skill in extract_skills_from_text(line, domain_name)
+    ]
+    return sorted(set(skills)) if len(set(skills)) >= 2 else []
+
+
 def classify_jd_line(line: str) -> str:
     lower_line = line.lower()
 
@@ -206,6 +217,9 @@ def parse_jd_requirements(job_description: str, domain_name: str | None = None) 
             # e.g. "Required Skills: Java, Kafka, Docker" — don't discard the skills part
             if inline_text:
                 required_lines.append(inline_text)
+                group_skills = _extract_or_skill_group(inline_text, domain_name)
+                if group_skills:
+                    required_skill_groups.append(group_skills)
             continue
         elif line_type == "preferred_header":
             # Nested lines such as "o Most preferred: ..." often sit inside a
@@ -245,6 +259,9 @@ def parse_jd_requirements(job_description: str, domain_name: str | None = None) 
             # Detect a cue that the next bulleted list is an "one-of" group
             if re.search(r"at least one|one of the|any of the following|any of these", line.lower()):
                 _next_group_is_one_of = True
+            group_skills = _extract_or_skill_group(line, domain_name)
+            if group_skills:
+                required_skill_groups.append(group_skills)
             if _looks_like_example_group(line):
                 group_skills = [
                     normalize_skill(skill, domain_name)

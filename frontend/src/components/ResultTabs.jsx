@@ -40,9 +40,9 @@ export default function ResultTabs({
   const activeContent = tabs.find((tab) => tab.key === activeTab)?.content
 
   return (
-    <div className="space-y-5">
-      <div className="sticky top-3 z-20 rounded-3xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+    <div className="w-full space-y-5">
+      <div className="sticky top-3 z-20 w-full rounded-3xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm">
+        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key
             const badge = tab.badge
@@ -52,7 +52,7 @@ export default function ResultTabs({
                 key={tab.key}
                 type="button"
                 onClick={() => handleTabClick(tab.key)}
-                className={`group flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-medium transition-all ${
+                className={`group flex h-full w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-medium transition-all ${
                   isActive
                     ? 'border-black bg-black text-white shadow-md'
                     : 'border-transparent bg-gray-100 text-gray-700 hover:border-gray-200 hover:bg-white hover:shadow-sm'

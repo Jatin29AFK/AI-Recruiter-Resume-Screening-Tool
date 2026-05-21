@@ -5,6 +5,8 @@ import {
 } from '../utils/jdValidation'
 import JobManager from './JobManager'
 
+const MAX_BATCH_RESUMES = 100
+
 export default function UploadForm({ onBatchAnalyze, loading }) {
   const batchFileInputRef = useRef(null)
 
@@ -59,8 +61,8 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
       } else {
         setBatchFileError('')
       }
-      if (combined.length > 20) {
-        setBatchFileError('Maximum 20 resumes allowed.')
+      if (combined.length > MAX_BATCH_RESUMES) {
+        setBatchFileError(`Maximum ${MAX_BATCH_RESUMES} resumes allowed.`)
         return prev
       }
       return combined
@@ -122,15 +124,18 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-lg">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/5 dark:border-slate-700 dark:bg-slate-900 dark:ring-white/10"
+    >
 
       {/* ── Multi-resume upload ── */}
       {
         <div className="space-y-3">
-          <label className="text-sm font-semibold text-gray-900 dark:text-white">
+          <label className="text-sm font-black tracking-tight text-slate-950 dark:text-white">
             Upload Candidate Resumes
             <span className="ml-2 text-xs font-normal text-gray-500 dark:text-slate-400">
-              (up to 20 PDFs / DOCXs)
+              (up to {MAX_BATCH_RESUMES} PDFs / DOCXs)
             </span>
           </label>
 
@@ -139,10 +144,10 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
             onDragOver={handleBatchDragOver}
             onDragLeave={handleBatchDragLeave}
             onDrop={handleBatchDrop}
-            className={`group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center transition ${
+            className={`group flex cursor-pointer flex-col items-center justify-center rounded-3xl border px-6 py-10 text-center transition duration-300 ${
               isDraggingBatch
-                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950'
-                : 'border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950'
+                ? 'border-slate-950 bg-slate-100 shadow-inner dark:border-white dark:bg-slate-800'
+                : 'border-slate-200 bg-slate-50 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-lg dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600'
             }`}
           >
             <input
@@ -153,17 +158,19 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
               onChange={handleBatchFileChange}
               className="hidden"
             />
-            <div className="mb-3 rounded-full bg-white dark:bg-slate-700 p-3 shadow-sm">
-              <svg viewBox="0 0 24 24" className="h-6 w-6 text-gray-700 dark:text-slate-300" fill="none">
+            <div className="mb-4 rounded-2xl bg-slate-950 p-4 shadow-lg shadow-slate-950/10 transition group-hover:scale-105 dark:bg-white">
+              <svg viewBox="0 0 24 24" className="h-7 w-7 text-white dark:text-slate-950" fill="none">
                 <path d="M12 16V4M12 4L7 9M12 4L17 9M5 20H19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">
+            <p className="relative text-base font-black text-slate-950 dark:text-white">
               {resumeFiles.length > 0
                 ? `${resumeFiles.length} file${resumeFiles.length > 1 ? 's' : ''} selected — click to add more`
                 : 'Browse or drag & drop candidate resumes'}
             </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">PDF, DOCX · max 20 files</p>
+            <p className="relative mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+              PDF, DOCX · max {MAX_BATCH_RESUMES} files
+            </p>
           </div>
 
           {/* <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Note: Resumes should include clear headings: Experience, Education, Skills, and contact details (email or phone).</p> */}
@@ -173,7 +180,7 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
               {resumeFiles.map((f, i) => (
                 <li
                   key={i}
-                  className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-sm"
+                  className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800"
                 >
                   <span className="truncate text-gray-800 dark:text-slate-200">{f.name}</span>
                   <button
@@ -197,13 +204,13 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
       {/* ── JD input ── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor="job-description" className="text-sm font-semibold text-gray-900 dark:text-white">
+          <label htmlFor="job-description" className="text-sm font-black tracking-tight text-slate-950 dark:text-white">
             Job Description
           </label>
           <button
             type="button"
             onClick={() => setShowJobManager(true)}
-            className="rounded-lg border border-blue-500 bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
+            className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-500"
           >
              Saved Jobs
           </button>
@@ -214,7 +221,7 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
           value={jobDescription}
           onChange={handleJdChange}
           placeholder="Paste the job description here. This is used to screen and rank all uploaded candidates."
-          className="w-full rounded-2xl border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white p-4 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-3xl border border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-800 outline-none transition focus:border-slate-500 focus:bg-white focus:ring-4 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-slate-700"
         />
         {jdError && <p className="text-sm font-medium text-red-600">{jdError}</p>}
         {selectedJob?.job_id && (
@@ -243,8 +250,8 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
         <button
           type="submit"
           disabled={loading}
-          className="rounded-xl bg-black px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+            className="rounded-2xl bg-slate-950 px-7 py-3.5 text-sm font-black text-white shadow-lg shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+          >
           {loading
             ? 'Screening Candidates...'
             : `Screen ${resumeFiles.length || ''} Candidate${resumeFiles.length !== 1 ? 's' : ''}`}

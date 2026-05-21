@@ -280,6 +280,7 @@ class MatchAnalysisResponse(BaseModel):
     recommendation: Optional[RecommendationReport] = None
     is_likely_resume: bool = True
     resume_file_warning: Optional[str] = None
+    resume_detection: Optional[dict] = None
     cert_coverage: Optional[dict] = None
 
 
@@ -352,7 +353,7 @@ class CandidateSummary(BaseModel):
 
 class BatchFileOutcome(BaseModel):
     filename: str
-    status: str  # analyzed | skipped_non_resume | failed_analysis
+    status: str  # analyzed | skipped_hard_reject | failed_analysis
     reason_code: Optional[str] = None
     message: Optional[str] = None
 

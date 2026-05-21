@@ -2,11 +2,11 @@ export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ||
   (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '')
 
-const REQUEST_TIMEOUT_MS = 120000
+const REQUEST_TIMEOUT_MS = 300000
 
 function getTimeoutErrorMessage(endpoint) {
   if (endpoint === '/matcher/batch-upload') {
-    return 'Screening is taking longer than expected. Please try fewer resumes at once or retry in a moment.'
+    return 'Screening is taking longer than expected. Please try a smaller batch or retry in a moment.'
   }
 
   return 'The request took too long to finish. Please retry.'
@@ -203,21 +203,4 @@ export async function getCandidateStatuses(candidateIds) {
   })
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inbox (inbound email CV ingestion)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getInboxSummary() {
-  return fetchJSON('/inbox/queue')
-}
-
-export async function getInboxQueue(jobId) {
-  return fetchJSON(`/inbox/queue/${jobId}`)
-}
-
-export async function processInboxQueue(jobId) {
-  return fetchJSON(`/inbox/process/${jobId}`, { method: 'POST' })
-}
-
-// Alias used by InboxPanel to load saved jobs list
 export const fetchJobs = listJobs

@@ -167,6 +167,21 @@ class NonNegotiableEvaluatorTest(unittest.TestCase):
         self.assertEqual("pass", result["non_negotiable_verdict"])
         self.assertEqual([], result["hard_reject_reasons"])
 
+    def test_parsed_jd_inline_or_group_respects_one_of_logic(self):
+        jd = """
+        Job Description
+        Must have:
+        Mobile app development with Flutter OR React Native
+        """
+        result = evaluate_non_negotiables(
+            analysis=_analysis(resume_skills=["flutter"]),
+            job_description=jd,
+            saved_job=None,
+        )
+
+        self.assertEqual("pass", result["non_negotiable_verdict"])
+        self.assertEqual([], result["hard_reject_reasons"])
+
     def test_parsed_jd_optional_certification_not_added_to_non_negotiables(self):
         jd = """
         Job Description

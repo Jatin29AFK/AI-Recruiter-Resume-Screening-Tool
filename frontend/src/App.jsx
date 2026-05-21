@@ -31,7 +31,6 @@ import AppBrand from './components/AppBrand'
 import ThemeToggle from './components/ThemeToggle'
 import RecruiterDashboard from './components/RecruiterDashboard'
 import RecommendationPanel from './components/RecommendationPanel'
-import InboxPanel from './components/InboxPanel'
 
 import {
   analyzeResume,
@@ -555,7 +554,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
   className={`min-h-screen px-4 py-6 transition-colors duration-300 ${
     theme === 'dark'
       ? 'bg-slate-950 text-white'
-      : 'bg-gradient-to-b from-gray-100 to-gray-200 text-gray-900'
+      : 'bg-slate-100 text-gray-900'
   }`}
 >
     <div className="w-full space-y-8">
@@ -584,11 +583,6 @@ function getTabStatuses(result, tailorResult, compareResult) {
   {!result && !batchResult && !loading && !batchLoading && !error && (
     <div className="space-y-6">
       <EmptyState />
-      <InboxPanel onScreeningComplete={(batchRes) => {
-        setBatchResult(batchRes)
-        setResult(null)
-        setError('')
-      }} />
       <UploadForm
         key={`upload-${formResetKey}`}
         onAnalyze={handleAnalyze}

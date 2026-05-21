@@ -7,6 +7,7 @@ from app.services.career_analyzer import (
     detect_red_flags,
 )
 from app.services.analyzer import analyze_resume_text_against_jd
+from app.services.extractor import extract_skills_from_text
 from app.services.experience_estimator import (
     estimate_total_experience_years,
     extract_professional_experience_ranges,
@@ -180,6 +181,59 @@ class ExperienceExtractionRegressionTest(unittest.TestCase):
             {"mongodb", "mysql", "sql"},
             [set(group) for group in info["required_skill_groups"]],
         )
+
+    def test_react_and_react_native_are_distinct_skills(self):
+        react_native_skills = extract_skills_from_text(
+            "Built production mobile apps using React Native and TypeScript.",
+            "software_web",
+        )
+        react_web_skills = extract_skills_from_text(
+            "Built production web apps using React and TypeScript.",
+            "software_web",
+        )
+
+        self.assertIn("react native", react_native_skills)
+        self.assertNotIn("react", react_native_skills)
+        self.assertIn("react", react_web_skills)
+        self.assertNotIn("react native", react_web_skills)
+
+    def test_or_skill_group_scores_candidate_with_either_mobile_framework(self):
+        jd_text = """
+        Job Description
+        Must have:
+        Mobile app development experience with Flutter OR React Native
+        """
+        resume_text = """
+        Asha Kumar
+        asha@example.com | +91 9876543210
+
+        Summary
+        Mobile developer with 4 years of experience building production apps.
+
+        Experience
+        Jan 2021 - Present: Mobile Developer, AppWorks
+        - Built Flutter applications with offline sync, push notifications, and REST API integrations.
+
+        Skills
+        Flutter, Dart, mobile app development, REST APIs, Git
+        """
+
+        info = parse_jd_requirements(jd_text, "software_web")
+        result = analyze_resume_text_against_jd(
+            resume_text,
+            jd_text,
+            filename="asha.pdf",
+            include_llm_explanation=False,
+        )
+
+        self.assertIn(
+            {"flutter", "react native"},
+            [set(group) for group in info["required_skill_groups"]],
+        )
+        self.assertEqual(result["scores"]["required_skill_score"], 100.0)
+        self.assertEqual(result["critical_missing_skills"], [])
+        self.assertIn("flutter", result["matched_skills"])
+        self.assertNotIn("react native", result["missing_skills"])
 
     def test_backend_havells_scoring_rewards_evidence_when_must_haves_are_equal(self):
         jd_text = self._load_backend_havells_jd()
