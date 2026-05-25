@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="havellsTitle havellsDesc">
+  <title id="havellsTitle">Havells logo</title>
+  <desc id="havellsDesc">Red square with white Havells wordmark</desc>
+  <rect x="0" y="0" width="220" height="220" rx="28" fill="#d8192f"/>
+  <path fill="#ffffff" d="M40 70h18v34h34V70h18v80H92v-30H58v30H40V70zm86 0h18v62h36v18h-54V70zm63 0h18v80h-18V70z"/>
+</svg>

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import CandidateCard from './CandidateCard'
 import CandidateDetailPanel from './CandidateDetailPanel'
+import ImportantBanner from './ImportantBanner'
 import { getCandidateStatuses, updateCandidateStatus } from '../services/api'
 import {
   HIRING_STAGE_OPTIONS,
@@ -32,7 +33,7 @@ function WeightDropdown({ value, onChange }) {
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-700 dark:text-white px-3 py-2 text-sm font-semibold hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition whitespace-nowrap"
       >
-        <span>Priority Level</span>
+        <span>{value || 'Priority Level'}</span>
         <span className="opacity-40 text-[10px]">{open ? '▲' : '▼'}</span>
       </button>
 
@@ -128,26 +129,23 @@ const SKILL_ALIASES = {
 }
 
 // Default scoring component weights (recruiter-adjustable per JD)
+// Note: achievementsImpact, industryFit and careerProgression are intentionally
+// excluded here — they already appear in Role Parameter weights and including them
+// in both models would double-count those dimensions.
 const DEFAULT_SCORING_WEIGHTS = {
-  requiredSkills: 25,
-  preferredSkills: 10,
-  atsCompatibility: 10,
-  experienceFit: 15,
+  requiredSkills: 30,
+  preferredSkills: 15,
+  atsCompatibility: 15,
+  experienceFit: 25,
   evidenceQuality: 15,
-  achievementsImpact: 10,
-  industryFit: 8,
-  careerProgression: 7,
 }
 
 const SCORING_WEIGHT_META = [
-  { key: 'requiredSkills',      label: 'Required skills',         description: 'Must-have JD skills present in resume', color: 'text-red-600 dark:text-red-400', accent: 'accent-red-500' },
-  { key: 'preferredSkills',     label: 'Preferred skills',        description: 'Nice-to-have JD skills present in resume', color: 'text-sky-600 dark:text-sky-400', accent: 'accent-sky-500' },
-  { key: 'atsCompatibility',    label: 'ATS compatibility',       description: 'Resume ATS readability and parsing friendliness', color: 'text-violet-600 dark:text-violet-400', accent: 'accent-violet-500' },
-  { key: 'experienceFit',       label: 'Experience fit',          description: 'How closely experience level matches requirement', color: 'text-blue-600 dark:text-blue-400', accent: 'accent-blue-500' },
-  { key: 'evidenceQuality',     label: 'Evidence quality',        description: 'Claims supported by concrete resume evidence', color: 'text-indigo-600 dark:text-indigo-400', accent: 'accent-indigo-500' },
-  { key: 'achievementsImpact',  label: 'Achievements / impact',   description: 'Measurable results, numbers, quantified outcomes', color: 'text-emerald-600 dark:text-emerald-400', accent: 'accent-emerald-500' },
-  { key: 'industryFit',         label: 'Industry / domain fit',   description: 'Alignment with role domain and sector experience', color: 'text-orange-600 dark:text-orange-400', accent: 'accent-orange-500' },
-  { key: 'careerProgression',   label: 'Career progression',      description: 'Stable growth, promotions, increasing responsibility', color: 'text-teal-600 dark:text-teal-400', accent: 'accent-teal-500' },
+  { key: 'requiredSkills',   label: 'Required skills',    description: 'Must-have JD skills present in resume', color: 'text-red-600 dark:text-red-400', accent: 'accent-red-500' },
+  { key: 'preferredSkills',  label: 'Preferred skills',   description: 'Nice-to-have JD skills present in resume', color: 'text-sky-600 dark:text-sky-400', accent: 'accent-sky-500' },
+  { key: 'atsCompatibility', label: 'ATS compatibility',  description: 'Resume ATS readability and parsing friendliness', color: 'text-violet-600 dark:text-violet-400', accent: 'accent-violet-500' },
+  { key: 'experienceFit',    label: 'Experience fit',     description: 'How closely experience level matches requirement', color: 'text-blue-600 dark:text-blue-400', accent: 'accent-blue-500' },
+  { key: 'evidenceQuality',  label: 'Evidence quality',   description: 'Claims supported by concrete resume evidence', color: 'text-indigo-600 dark:text-indigo-400', accent: 'accent-indigo-500' },
 ]
 
 const DEFAULT_SCORING_FEATURES = {
@@ -156,9 +154,6 @@ const DEFAULT_SCORING_FEATURES = {
   atsCompatibility: true,
   experienceFit: true,
   evidenceQuality: true,
-  achievementsImpact: true,
-  industryFit: true,
-  careerProgression: true,
 }
 
 const DEFAULT_ROLE_PARAMETER_WEIGHTS = {
@@ -451,9 +446,11 @@ function sortCandidates(candidates, sortBy) {
   })
 }
 
-function exportCandidatesCSV(candidates, jdTitle) {
+function exportCandidatesCSV(candidates, jdTitle, scoringActive) {
   const headers = [
-    'Rank', 'Filename', 'Bucket', 'Hiring Stage', 'Original Overall Score', 'Adjusted Screening Score', 'ATS Score',
+    'Rank', 'Filename', 'Bucket', 'Hiring Stage', 'Overall Score',
+    ...(scoringActive ? ['Adjusted Screening Score'] : []),
+    'ATS Score',
     'Required Skills', 'Evidence Score', 'Matched Skills Count',
     'Critical Gaps', 'Experience (yrs)', 'Exp Meets Req',
     'Strong Keywords', 'ATS Issues', 'Rule Note',
@@ -464,7 +461,7 @@ function exportCandidatesCSV(candidates, jdTitle) {
     c.shortlist_verdict,
     getCandidateStage(c),
     c.overall_score,
-    c._weighted_score ?? c.overall_score,
+    ...(scoringActive ? [c._weighted_score ?? c.overall_score] : []),
     c.ats_score,
     c.required_skills_count > 0 ? `${c.required_skills_matched_count}/${c.required_skills_count} (${c.required_skill_score})` : 'N/A',
     c.skill_support_score,
@@ -577,7 +574,9 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
   const scoringWeightTotal = Object.values(scoringWeights).reduce((sum, value) => sum + Number(value || 0), 0)
   const activeScoringWeightTotal = activeScoringWeightKeys.reduce((sum, key) => sum + Number(scoringWeights[key] || 0), 0)
   const roleParameterWeightTotal = roleParameterWeightKeys.reduce((sum, key) => sum + Number(roleParameterWeights[key] || 0), 0)
-  const signalScoringReady = activeScoringWeightKeys.length > 0 && activeScoringWeightTotal === TOTAL_WEIGHT
+  // Signal scoring is considered ready when at least one active signal has a positive allocation.
+  // We normalize active signals in `computeComponentWeightedScore`, so exact 100% configuration is not required.
+  const signalScoringReady = activeScoringWeightKeys.length > 0 && activeScoringWeightTotal > 0
   const roleParameterScoringReady = roleParameterWeightTotal === TOTAL_WEIGHT
   const applySignalScoring = useSignalScoring && signalScoringReady
   const applyRoleParameterScoring = useRoleParameterScoring && roleParameterScoringReady
@@ -721,13 +720,18 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
               {total_candidates} candidate{total_candidates !== 1 ? 's' : ''} screened
             </p>
             <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
-              Policy {policy.policy_version} · Shortlist ≥{policy.shortlist_threshold} · Review ≥{policy.review_threshold}
+              Shortlist ≥{policy.shortlist_threshold} · Review {policy.review_threshold}–{policy.shortlist_threshold - 1} · Reject &lt;{policy.review_threshold}
             </p>
+            <div className="mt-2">
+              <ImportantBanner muted={true} dismissKey="ai_disclaimer">
+                <strong>Scores are AI estimates.</strong> When the system is unsure about a candidate's experience, skills, or fit, it flags the item for your review rather than making a definitive claim. <span className="font-medium">Always verify borderline candidates manually before making hiring decisions.</span>
+              </ImportantBanner>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => exportCandidatesCSV(effectiveCandidates, jd_title)}
+              onClick={() => exportCandidatesCSV(effectiveCandidates, jd_title, weightsActive)}
               className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition"
             >
               ↓ Export CSV
@@ -853,7 +857,7 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                   Use Signal-Based Scoring (new model)
                 </label>
                 <p className="text-xs text-slate-500 dark:text-slate-400 italic mb-2">
-                  Tick/untick any scoring signal and adjust weights yourself. This model applies only when active allocation is exactly 100%.
+                  Tick/untick any scoring signal and adjust weights yourself. Active signal allocations are normalized to 100% automatically; any positive allocation will be applied.
                 </p>
                 {SCORING_WEIGHT_META.map(m => (
                     <div key={m.key} className="space-y-0.5">
@@ -885,16 +889,19 @@ export default function RecruiterDashboard({ batchResult, onReset }) {
                     </div>
 	                  ))}
 	                {/* Total indicator */}
-		                <div className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold text-center border ${
-		                  signalScoringReady
-		                    ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700'
-		                    : 'bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700'
-		                }`}>
-		                  Total configured: {scoringWeightTotal}% · Active allocation: {activeScoringWeightTotal}% · {activeScoringWeightKeys.length} feature{activeScoringWeightKeys.length !== 1 ? 's' : ''} active
-		                  {useSignalScoring && !signalScoringReady && (
-		                    <span className="block mt-1">Complete active allocation to exactly 100% to apply signal-based scoring.</span>
-		                  )}
-		                </div>
+                    <div className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold text-center border ${
+                      signalScoringReady
+                        ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700'
+                        : 'bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700'
+                    }`}>
+                      Total configured: {scoringWeightTotal}% · Active allocation: {activeScoringWeightTotal}% · {activeScoringWeightKeys.length} feature{activeScoringWeightKeys.length !== 1 ? 's' : ''} active
+                      {useSignalScoring && signalScoringReady && (
+                        <span className="block mt-1">Active allocations will be normalized to 100% when applying signal-based scoring.</span>
+                      )}
+                      {useSignalScoring && !signalScoringReady && (
+                        <span className="block mt-1">Enable at least one signal and assign it a positive weight to apply the model.</span>
+                      )}
+                    </div>
               </div>
             )}
 

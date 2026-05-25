@@ -12,12 +12,12 @@ export default function AppBrand({ onClick }) {
       className="group grid w-full max-w-5xl cursor-pointer grid-cols-[72px_minmax(0,1fr)] items-center gap-5 rounded-[2rem] border border-slate-200 bg-white px-8 py-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/5 transition hover:-translate-y-0.5 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900 dark:ring-white/10"
       title="Click to restart HireFit"
     >
-      <div className="flex justify-center">
-        <div className="rounded-3xl bg-slate-950 p-2.5 shadow-lg shadow-slate-950/15 dark:bg-white">
+      <div className="flex items-center justify-center">
+        <div className="rounded-3xl bg-transparent p-0">
           <img
-            src="/favicon.svg"
-            alt="HireFit logo"
-            className="h-14 w-14 shrink-0 rounded-2xl object-contain"
+            src="/havells.png"
+            alt="Havells logo"
+            className="h-20 w-20 shrink-0 rounded-2xl object-contain bg-white dark:bg-slate-900 p-2"
           />
         </div>
       </div>

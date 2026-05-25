@@ -34,6 +34,16 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 MAX_BATCH_RESUMES = 100
 
 
+def _raise_if_non_resume(text: str, filename: str) -> None:
+    detection = evaluate_resume_document(text=text, filename=filename)
+    if detection.get("final_label") == "reject":
+        raise HTTPException(
+            status_code=400,
+            detail=detection.get("warning_message")
+            or "Uploaded file appears to be a non-resume document.",
+        )
+
+
 class JobUrlRequest(BaseModel):
     url: str
 
@@ -77,6 +87,61 @@ def extract_jd_from_url(payload: JobUrlRequest):
         raise HTTPException(status_code=500, detail=f"Failed to extract JD from URL: {str(e)}")
 
 
+@router.post("/validate-resume-file")
+async def validate_resume_file(resume: UploadFile = File(...)):
+    """
+    Lightweight pre-screen endpoint used by frontend immediately after file pick/drop.
+    Returns a structured validation result instead of failing the whole workflow.
+    """
+    if not resume.filename:
+        return {
+            "is_valid_resume": False,
+            "final_label": "reject",
+            "warning_message": "Resume file must have a valid filename.",
+            "decision_reason": "missing_filename",
+        }
+
+    allowed_extensions = (".pdf", ".docx")
+    if not resume.filename.lower().endswith(allowed_extensions):
+        return {
+            "is_valid_resume": False,
+            "final_label": "reject",
+            "warning_message": "Only PDF and DOCX files are supported.",
+            "decision_reason": "unsupported_file_type",
+        }
+
+    safe_filename = f"{uuid.uuid4()}_{resume.filename}"
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+    try:
+        with open(file_path, "wb") as f:
+            content = await resume.read()
+            f.write(content)
+
+        resume_text = extract_resume_text(file_path, resume.filename)
+        detection = evaluate_resume_document(text=resume_text, filename=resume.filename)
+
+        return {
+            "is_valid_resume": detection.get("final_label") != "reject",
+            "final_label": detection.get("final_label", "reject"),
+            "warning_message": detection.get("warning_message"),
+            "decision_reason": detection.get("decision_reason"),
+        }
+    except Exception:
+        return {
+            "is_valid_resume": False,
+            "final_label": "reject",
+            "warning_message": "This file could not be parsed as a valid resume document.",
+            "decision_reason": "parse_failed",
+        }
+    finally:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            pass
+
+
 @router.post("/tailor-resume", response_model=ResumeTailorResponse)
 async def tailor_resume_for_job(
     resume: UploadFile = File(...),
@@ -97,14 +162,9 @@ async def tailor_resume_for_job(
             content = await resume.read()
             f.write(content)
 
-        # Quick content-based guardrail: ensure the uploaded file resembles a resume
+        # Ensure the file is parseable and reject obvious non-resume documents.
         resume_text = extract_resume_text(file_path, resume.filename)
-        detection = evaluate_resume_document(text=resume_text, filename=resume.filename)
-        if detection.get("final_label") == "reject":
-            raise HTTPException(
-                status_code=400,
-                detail=detection.get("warning_message") or "Uploaded file does not appear to be a resume.",
-            )
+        _raise_if_non_resume(resume_text, resume.filename)
 
         validated_jd = validate_job_description_input(job_description)
 
@@ -264,9 +324,12 @@ async def upload_resume_and_jd(
             job_description=validated_jd,
         )
 
-        # Reject only strong non-resume outcomes; grace-zone uploads proceed with warning.
         if result.get("resume_detection", {}).get("final_label") == "reject":
-            raise HTTPException(status_code=400, detail=result.get("resume_file_warning") or "Uploaded file does not appear to be a resume.")
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("resume_file_warning")
+                or "Uploaded file appears to be a non-resume document.",
+            )
 
         # Inject the serve ID so the frontend can fetch the original file
         result["resume_serve_id"] = safe_filename
@@ -342,14 +405,9 @@ async def compare_resume_with_multiple_jds(
             content = await resume.read()
             f.write(content)
 
-        # Quick content-based guardrail: ensure the uploaded file resembles a resume
+        # Ensure the file is parseable and reject obvious non-resume documents.
         resume_text = extract_resume_text(file_path, resume.filename)
-        detection = evaluate_resume_document(text=resume_text, filename=resume.filename)
-        if detection.get("final_label") == "reject":
-            raise HTTPException(
-                status_code=400,
-                detail=detection.get("warning_message") or "Uploaded file does not appear to be a resume.",
-            )
+        _raise_if_non_resume(resume_text, resume.filename)
 
         result = compare_resume_against_multiple_jds(
             file_path=file_path,
@@ -412,8 +470,8 @@ async def batch_upload_resumes(
 
         candidates: list[CandidateSummary] = []
         policy = get_screening_policy()
-        bad_files: list[str] = []
         failed_files: list[str] = []
+        skipped_files: list[str] = []
         file_outcomes: list[dict] = []
 
         logger.info(
@@ -434,19 +492,8 @@ async def batch_upload_resumes(
                 f.write(content)
 
             try:
-                # Quick content-based check before heavy analysis
-                resume_text = extract_resume_text(file_path, resume_file.filename)
-                detection = evaluate_resume_document(text=resume_text, filename=resume_file.filename)
-                if detection.get("final_label") == "reject":
-                    bad_files.append(resume_file.filename)
-                    file_outcomes.append({
-                        "filename": resume_file.filename,
-                        "status": "skipped_hard_reject",
-                        "reason_code": "NON_RESUME_INPUT",
-                        "message": detection.get("warning_message") or "File does not appear to be a resume.",
-                    })
-                    # Skip heavy analysis for this file
-                    continue
+                # Ensure the file is parseable before heavy analysis.
+                _ = extract_resume_text(file_path, resume_file.filename)
 
                 analysis = analyze_resume_against_jd(
                     file_path=file_path,
@@ -454,6 +501,17 @@ async def batch_upload_resumes(
                     job_description=validated_jd,
                     include_llm_explanation=False,
                 )
+
+                if analysis.get("resume_detection", {}).get("final_label") == "reject":
+                    skipped_files.append(resume_file.filename)
+                    file_outcomes.append({
+                        "filename": resume_file.filename,
+                        "status": "skipped_hard_reject",
+                        "reason_code": "RESUME_DETECTOR_REJECT",
+                        "message": analysis.get("resume_file_warning")
+                        or "Uploaded file appears to be a non-resume document.",
+                    })
+                    continue
             except Exception as e:
                 # Log and expose this file as failed analysis for transparency.
                 logger.exception("Batch analysis failed", extra={"filename": resume_file.filename})
@@ -590,12 +648,21 @@ async def batch_upload_resumes(
                 "message": analysis.get("resume_file_warning"),
             })
 
+        if not candidates and (skipped_files or failed_files):
+            return BatchAnalysisResponse(
+                jd_title=jd_title,
+                total_candidates=0,
+                policy=policy,
+                shortlisted=[],
+                review=[],
+                rejected=[],
+                all_candidates=[],
+                skipped_files=skipped_files,
+                failed_files=failed_files,
+                file_outcomes=file_outcomes,
+            )
+
         if not candidates:
-            if bad_files:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"The following files do not appear to be resumes: {', '.join(bad_files)}. Please upload PDF or DOCX resumes."
-                )
             raise HTTPException(status_code=422, detail="None of the uploaded resumes could be analyzed.")
 
         candidates.sort(key=lambda c: c.overall_score, reverse=True)
@@ -609,7 +676,7 @@ async def batch_upload_resumes(
             extra={
                 "resume_count": len(resumes),
                 "candidate_count": len(candidates),
-                "skipped_count": len(bad_files),
+                "skipped_count": len(skipped_files),
                 "failed_count": len(failed_files),
                 "elapsed_ms": round((time.perf_counter() - batch_started_at) * 1000, 1),
             },
@@ -623,7 +690,7 @@ async def batch_upload_resumes(
             review=review,
             rejected=rejected,
             all_candidates=candidates,
-            skipped_files=bad_files,
+            skipped_files=skipped_files,
             failed_files=failed_files,
             file_outcomes=file_outcomes,
         )

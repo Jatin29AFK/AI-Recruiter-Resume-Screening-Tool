@@ -45,6 +45,11 @@ TECH_JD_TERMS = [
     "cfd", "thermal analysis", "heat transfer", "embedded", "firmware",
     "aws", "azure", "gcp", "docker", "kubernetes", "api", "fastapi",
 ]
+
+ROLE_TERMS = [
+    "engineer", "developer", "analyst", "manager", "architect", "specialist",
+    "intern", "associate", "lead", "consultant", "designer", "administrator",
+]
  
  
 def clean_jd_text(text: str) -> str:
@@ -86,8 +91,22 @@ def _looks_like_job_description(text: str) -> bool:
     )
  
     bullet_like_lines = len(re.findall(r"(•|\*|-)\s+\w+", text))
+    role_matches = sum(1 for term in ROLE_TERMS if re.search(rf"\b{re.escape(term)}\b", lowered))
+
+    concise_jd_signal = (
+        role_matches >= 1
+        and tech_matches >= 1
+        and (
+            jd_hint_matches >= 1
+            or "responsibil" in lowered
+            or "requirement" in lowered
+            or "qualification" in lowered
+        )
+    )
  
     return (
+        concise_jd_signal
+        or
         jd_hint_matches >= 1
         or tech_matches >= 3
         or bullet_like_lines >= 3
@@ -101,14 +120,15 @@ def validate_job_description_input(job_description: str) -> str:
     if not cleaned:
         raise ValueError("Please paste a job description first.")
  
-    if len(cleaned.split()) < 35:
-        raise ValueError("The job description looks too short. Please paste a fuller JD.")
- 
     if _looks_like_real_code(cleaned) and not _looks_like_job_description(cleaned):
         raise ValueError(
             "The pasted content looks like code or script text, not a job description. "
             "Please paste the actual JD content."
         )
+
+    words = len(cleaned.split())
+    if words < 20 and not _looks_like_job_description(cleaned):
+        raise ValueError("The job description looks too short. Please paste a fuller JD.")
  
     if not _looks_like_job_description(cleaned):
         raise ValueError(

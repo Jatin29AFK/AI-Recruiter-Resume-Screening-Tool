@@ -77,5 +77,5 @@ export function getRejectionExplanation(candidate) {
     reasons.push('the overall match is below the recruiter threshold for this job')
   }
 
-  return `Rejected because ${reasons.slice(0, 4).join('; ')}. Review the full resume before making a final decision.`
+  return reasons.slice(0, 4)
 }

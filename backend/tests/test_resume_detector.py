@@ -73,6 +73,28 @@ class ResumeDetectorTest(unittest.TestCase):
         self.assertEqual(result["final_label"], "reject")
         self.assertEqual(result["decision_reason"], "travel_booking_match")
 
+    def test_rejects_cab_booking_receipt(self):
+        text = """
+        Ride Booking Confirmation
+        Trip ID: UB-CAB-90421
+        Passenger Name: Arjun Verma
+        Driver Name: Ravi Kumar
+        Pickup: Sector 62, Noida
+        Dropoff: Terminal 3, Delhi Airport
+        Cab Booking: Sedan
+        Ride Fare: INR 820
+        Booking confirmation generated on 18 Jun 2026 at 07:45 PM.
+        Service provider: CityCab Mobility Pvt Ltd.
+        Vehicle Number: DL 1Z 4582
+        Route: NOIDA -> DELHI AIRPORT
+        Payment mode: UPI
+        Support reference: CAB-HELP-3312
+        Terms and conditions apply.
+        """
+        result = evaluate_resume_document(text=text, filename="cab-booking.pdf")
+        self.assertEqual(result["final_label"], "reject")
+        self.assertEqual(result["decision_reason"], "travel_booking_match")
+
     def test_accepts_travel_industry_resume_with_booking_terms(self):
         text = """
         Aditi Rao

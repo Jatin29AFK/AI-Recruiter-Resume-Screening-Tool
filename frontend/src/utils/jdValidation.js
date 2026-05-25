@@ -66,13 +66,25 @@ function looksLikeJobDescription(text) {
     'cfd', 'thermal analysis', 'heat transfer', 'embedded', 'firmware',
     'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'api', 'fastapi',
   ]
+
+  const roleTerms = [
+    'engineer', 'developer', 'analyst', 'manager', 'architect', 'specialist',
+    'intern', 'associate', 'lead', 'consultant', 'designer', 'administrator',
+  ]
  
   const jdHintMatches = jdHints.filter((item) => lowered.includes(item)).length
   const techMatches = techTerms.filter((item) => lowered.includes(item)).length
+  const roleMatches = roleTerms.filter((item) => lowered.includes(item)).length
   const bulletMatches = (text.match(/(•|\*|-)\s+\w+/g) || []).length
   const wordCount = text.split(/\s+/).filter(Boolean).length
+
+  const conciseJdSignal =
+    roleMatches >= 1 &&
+    techMatches >= 1 &&
+    (jdHintMatches >= 1 || lowered.includes('responsibil') || lowered.includes('requirement') || lowered.includes('qualification'))
  
   return (
+    conciseJdSignal ||
     jdHintMatches >= 1 ||
     techMatches >= 3 ||
     bulletMatches >= 3 ||
@@ -101,12 +113,13 @@ export function validateJobDescriptionInput(value) {
     return 'Please paste a job description first.'
   }
  
-  if (cleaned.split(/\s+/).filter(Boolean).length < 35) {
-    return 'The job description looks too short. Please paste a fuller JD.'
-  }
- 
   if (looksLikeRealCode(cleaned) && !looksLikeJobDescription(cleaned)) {
     return 'The pasted content looks like code or script text, not a job description.'
+  }
+
+  const wordCount = cleaned.split(/\s+/).filter(Boolean).length
+  if (wordCount < 20 && !looksLikeJobDescription(cleaned)) {
+    return 'The job description looks too short. Please paste a fuller JD.'
   }
  
   if (!looksLikeJobDescription(cleaned)) {

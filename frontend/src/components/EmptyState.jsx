@@ -1,3 +1,5 @@
+import ImportantBanner from './ImportantBanner'
+
 const FEATURES = [
   { stat: '01', title: 'Candidate Ranking', desc: 'Automatically ranks every uploaded candidate by JD-fit score.' },
   { stat: '02', title: 'Shortlist / Review / Reject', desc: 'Buckets resumes into clear hiring decisions recruiters can act on.' },
@@ -20,6 +22,14 @@ export default function EmptyState() {
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
             Rank candidates, flag skill gaps, validate evidence, and identify who is safe to forward to your hiring manager.
           </p>
+          <div className="mt-3 max-w-3xl">
+            <div className="mb-2" />
+            <div className="w-full">
+              <ImportantBanner>
+                <strong>Scores are AI estimates.</strong> When the system is unsure about a candidate's experience, skills, or fit, it flags the item for your review rather than making a definitive claim. <span className="font-medium">Always verify borderline or flagged candidates manually before making hiring decisions.</span>
+              </ImportantBanner>
+            </div>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-right text-white shadow-lg dark:border-slate-700 dark:bg-white dark:text-slate-950">

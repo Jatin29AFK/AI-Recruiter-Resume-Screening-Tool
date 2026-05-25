@@ -3,9 +3,25 @@ import {
   validateJobDescriptionInput,
   sanitizeJobDescriptionInput,
 } from '../utils/jdValidation'
+import { validateResumeFile } from '../services/api'
 import JobManager from './JobManager'
 
 const MAX_BATCH_RESUMES = 100
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx'])
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/octet-stream',
+  '',
+])
+
+function isSupportedResumeFile(file) {
+  const dotIndex = file.name.lastIndexOf('.')
+  const ext = dotIndex >= 0 ? file.name.slice(dotIndex).toLowerCase() : ''
+  const hasAllowedExt = ALLOWED_EXTENSIONS.has(ext)
+  const hasAllowedMime = ALLOWED_MIME_TYPES.has((file.type || '').toLowerCase())
+  return hasAllowedExt && hasAllowedMime
+}
 
 export default function UploadForm({ onBatchAnalyze, loading }) {
   const batchFileInputRef = useRef(null)
@@ -14,6 +30,7 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
   const [resumeFiles, setResumeFiles] = useState([])
   const [batchFileError, setBatchFileError] = useState('')
   const [isDraggingBatch, setIsDraggingBatch] = useState(false)
+  const [isValidatingFiles, setIsValidatingFiles] = useState(false)
 
   // job description
   const [jobDescription, setJobDescription] = useState('')
@@ -21,33 +38,35 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
   const [showJobManager, setShowJobManager] = useState(false)
   const [selectedJob, setSelectedJob] = useState(null)
 
-  // ── Multi resume ───────────────────────────────────────────────────────────
-  const addBatchFiles = (newFiles) => {
-    const allowed = ['.pdf', '.docx']
-    const valid = []
+  // Add files: perform local extension checks, then call backend quick-validate
+  const addBatchFiles = async (newFiles) => {
+    const validByType = []
     const invalid = []
     const duplicates = []
+
     Array.from(newFiles).forEach((f) => {
-      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
-      if (!allowed.includes(ext)) {
+      if (!isSupportedResumeFile(f)) {
         invalid.push(f.name)
       } else {
-        valid.push(f)
+        validByType.push(f)
       }
     })
-    setResumeFiles((prev) => {
-      const deduplicated = []
-      for (const f of valid) {
-        const isDuplicate = prev.some(
-          (existing) => existing.name === f.name && existing.size === f.size
-        )
-        if (isDuplicate) {
-          duplicates.push(f.name)
-        } else {
-          deduplicated.push(f)
-        }
+
+    const deduplicated = []
+    for (const f of validByType) {
+      const isDuplicate = resumeFiles.some(
+        (existing) => existing.name === f.name && existing.size === f.size
+      ) || deduplicated.some(
+        (existing) => existing.name === f.name && existing.size === f.size
+      )
+      if (isDuplicate) {
+        duplicates.push(f.name)
+      } else {
+        deduplicated.push(f)
       }
-      const combined = [...prev, ...deduplicated]
+    }
+
+    if (deduplicated.length === 0) {
       if (invalid.length && duplicates.length) {
         setBatchFileError(
           `Unsupported: ${invalid.join(', ')}. Already added: ${duplicates.join(', ')}.`
@@ -55,22 +74,83 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
       } else if (invalid.length) {
         setBatchFileError(`Unsupported file(s): ${invalid.join(', ')}. Use PDF or DOCX.`)
       } else if (duplicates.length) {
-        setBatchFileError(
-          `Already added (skipped): ${duplicates.join(', ')}`
+        setBatchFileError(`Already added (skipped): ${duplicates.join(', ')}`)
+      }
+      return
+    }
+
+    setIsValidatingFiles(true)
+    const rejectedByContent = []
+    const acceptedByContent = []
+
+    try {
+      const checks = await Promise.all(
+        deduplicated.map(async (file) => {
+          try {
+            const validation = await validateResumeFile(file)
+            return { file, validation, error: null }
+          } catch (err) {
+            return {
+              file,
+              validation: null,
+              error: err?.message || 'Could not validate this file.',
+            }
+          }
+        })
+      )
+
+      checks.forEach(({ file, validation, error }) => {
+        if (error) {
+          rejectedByContent.push(`${file.name} (${error})`)
+          return
+        }
+        if (!validation?.is_valid_resume || validation?.final_label === 'reject') {
+          rejectedByContent.push(
+            `${file.name} (${validation?.warning_message || 'Detected as non-resume document.'})`
+          )
+          return
+        }
+        acceptedByContent.push(file)
+      })
+    } finally {
+      setIsValidatingFiles(false)
+    }
+
+    const uniqueAccepted = acceptedByContent.filter(
+      (candidate) =>
+        !resumeFiles.some(
+          (existing) => existing.name === candidate.name && existing.size === candidate.size
         )
-      } else {
-        setBatchFileError('')
-      }
-      if (combined.length > MAX_BATCH_RESUMES) {
-        setBatchFileError(`Maximum ${MAX_BATCH_RESUMES} resumes allowed.`)
-        return prev
-      }
-      return combined
-    })
+    )
+    const remainingSlots = Math.max(0, MAX_BATCH_RESUMES - resumeFiles.length)
+    const toAdd = uniqueAccepted.slice(0, remainingSlots)
+    const overflow = uniqueAccepted.slice(remainingSlots).map((f) => f.name)
+
+    if (toAdd.length > 0) {
+      setResumeFiles((prev) => [...prev, ...toAdd])
+    }
+
+    const parts = []
+    if (invalid.length) {
+      parts.push(`Unsupported file(s): ${invalid.join(', ')}. Use PDF or DOCX.`)
+    }
+    if (duplicates.length) {
+      parts.push(`Already added (skipped): ${duplicates.join(', ')}`)
+    }
+    if (rejectedByContent.length) {
+      parts.push(`Skipped non-resume file(s): ${rejectedByContent.join('; ')}`)
+    }
+    if (overflow.length) {
+      parts.push(
+        `Maximum ${MAX_BATCH_RESUMES} resumes allowed. Not added: ${overflow.join(', ')}.`
+      )
+    }
+
+    setBatchFileError(parts.join(' '))
   }
 
-  const handleBatchFileChange = (e) => {
-    addBatchFiles(e.target.files)
+  const handleBatchFileChange = async (e) => {
+    await addBatchFiles(e.target.files)
     if (batchFileInputRef.current) batchFileInputRef.current.value = ''
   }
 
@@ -79,11 +159,20 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
     setBatchFileError('')
   }
 
-  const handleBatchDragOver = (e) => { e.preventDefault(); setIsDraggingBatch(true) }
-  const handleBatchDragLeave = (e) => { e.preventDefault(); setIsDraggingBatch(false) }
+  const handleBatchDragOver = (e) => {
+    e.preventDefault()
+    setIsDraggingBatch(true)
+  }
+
+  const handleBatchDragLeave = (e) => {
+    e.preventDefault()
+    setIsDraggingBatch(false)
+  }
+
   const handleBatchDrop = (e) => {
-    e.preventDefault(); setIsDraggingBatch(false)
-    addBatchFiles(e.dataTransfer.files)
+    e.preventDefault()
+    setIsDraggingBatch(false)
+    void addBatchFiles(e.dataTransfer.files)
   }
 
   // ── JD input ───────────────────────────────────────────────────────────────
@@ -113,7 +202,7 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
       return
     }
     if (nextJdError) return
-    
+
     const formData = new FormData()
     resumeFiles.forEach((f) => formData.append('resumes', f))
     formData.append('job_description', cleanedJd)
@@ -173,8 +262,6 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
             </p>
           </div>
 
-          {/* <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">Note: Resumes should include clear headings: Experience, Education, Skills, and contact details (email or phone).</p> */}
-
           {resumeFiles.length > 0 && (
             <ul className="space-y-2">
               {resumeFiles.map((f, i) => (
@@ -197,6 +284,9 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
 
           {batchFileError && (
             <p className="text-sm font-medium text-red-600">{batchFileError}</p>
+          )}
+          {isValidatingFiles && (
+            <p className="text-sm font-medium text-amber-600">Validating uploaded files...</p>
           )}
         </div>
       }
@@ -249,10 +339,12 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={loading}
-            className="rounded-2xl bg-slate-950 px-7 py-3.5 text-sm font-black text-white shadow-lg shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-          >
-          {loading
+          disabled={loading || isValidatingFiles}
+          className="rounded-2xl bg-slate-950 px-7 py-3.5 text-sm font-black text-white shadow-lg shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+        >
+          {isValidatingFiles
+            ? 'Validating Files...'
+            : loading
             ? 'Screening Candidates...'
             : `Screen ${resumeFiles.length || ''} Candidate${resumeFiles.length !== 1 ? 's' : ''}`}
         </button>

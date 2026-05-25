@@ -160,6 +160,10 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
   const rejectionExplanation = showRejectionReason ? getRejectionExplanation(candidate) : ''
   const nonNegotiableReject = candidate.non_negotiable_verdict === 'reject' && candidate.shortlist_verdict === 'Reject'
   const nonNegotiableReview = candidate.non_negotiable_verdict === 'review'
+  const nonNegotiableSummary = candidate.non_negotiable_reasons?.[0]
+    || (candidate.critical_missing_skills?.length
+      ? `Missing required skills: ${candidate.critical_missing_skills.slice(0, 3).join(', ')}`
+      : 'One or more mandatory screening criteria were not met.')
 
   const normalizeLinkedinUrl = (url) => {
     if (!url) return ''
@@ -295,7 +299,7 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
                 <p className={`text-base font-bold ${bucket.color}`}>{bucket.label}</p>
                 <p className="text-sm text-gray-600 dark:text-slate-400">
                   {nonNegotiableReject
-                    ? 'Forced to Reject because one or more backend non-negotiable criteria failed.'
+                    ? `Rejected due to mandatory criteria mismatch: ${nonNegotiableSummary}`
                     : bucket.reason}
                 </p>
                 <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-slate-400">Hiring stage: {candidateStage}</p>
@@ -325,10 +329,18 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
             </div>
           )}
 
-          {showRejectionReason && rejected && rejectionExplanation && (
+          {showRejectionReason && rejected && rejectionExplanation?.length > 0 && (
             <div className="rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-red-700 dark:text-red-300">Plain-English Rejection Reason</p>
-              <p className="mt-1 text-sm leading-relaxed text-red-700 dark:text-red-200">{rejectionExplanation}</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-red-700 dark:text-red-300">Rejection Reasons</p>
+              <ul className="mt-2 space-y-1.5">
+                {rejectionExplanation.map((reason, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm leading-relaxed text-red-700 dark:text-red-200">
+                    <span className="mt-0.5 flex-shrink-0">•</span>
+                    <span className="capitalize">{reason}</span>
+                  </li>
+                ))}
+              </ul>
+              {/* <p className="mt-2 text-xs text-red-500 dark:text-red-400 italic">Always verify manually before making a final decision.</p> */}
             </div>
           )}
 
@@ -538,7 +550,7 @@ export default function CandidateDetailPanel({ candidate, onClose, policy }) {
               {(candidate.non_negotiable_flags?.length > 0 || candidate.review_flags?.length > 0 || candidate.non_negotiable_reasons?.length > 0) && (
                 <div className="rounded-2xl border-2 border-orange-400 dark:border-orange-600 bg-orange-50 dark:bg-orange-950 p-4 space-y-2">
                   <p className="text-xs font-bold text-orange-800 dark:text-orange-200 uppercase tracking-wide">
-                    {nonNegotiableReject ? '⚠ Non-negotiable Criteria — Backend Rejected' : '⚠ Non-negotiable Criteria — Recruiter Review Required'}
+                    {nonNegotiableReject ? '⚠ Non-negotiable Criteria — Rejection Triggered' : '⚠ Non-negotiable Criteria — Recruiter Review Required'}
                   </p>
                   <p className="text-xs text-orange-600 dark:text-orange-400">
                     These are screening signals that may warrant manual verification before a decision is made.

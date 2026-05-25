@@ -106,6 +106,14 @@ _TRAVEL_BOOKING_TERMS = (
     "ticket number",
     "e-ticket",
     "airline",
+    "cab booking",
+    "taxi booking",
+    "ride booking",
+    "trip id",
+    "driver name",
+    "pickup",
+    "dropoff",
+    "ride fare",
 )
 
 _INSTALLATION_GUIDE_TERMS = (
@@ -532,6 +540,27 @@ def evaluate_resume_document(
         if a in text_lower and b in text_lower:
             hard_reject = True
             break
+
+    # Explicit travel / ticket strong-match: if multiple flight/boarding related
+    # keywords appear, treat as travel booking / boarding pass and hard reject
+    travel_keyword_markers = (
+        "boarding pass",
+        "flight number",
+        "pnr",
+        "passenger",
+        "passenger name",
+        "ticket number",
+        "e-ticket",
+        "seat",
+        "gate",
+        "departure",
+        "arrival",
+        "itinerary",
+    )
+    travel_keyword_hits = sum(1 for k in travel_keyword_markers if k in text_lower)
+    if travel_keyword_hits >= 2 and positive_signals.get("section_keywords", 0.0) <= 0.25:
+        hard_reject = True
+        negative_signals["travel_ticket_markers"] = round(min(1.0, travel_keyword_hits / len(travel_keyword_markers)), 4)
 
     if hard_reject:
         final_label = "reject"

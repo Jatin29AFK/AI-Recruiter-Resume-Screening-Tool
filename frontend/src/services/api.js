@@ -69,6 +69,12 @@ export async function batchAnalyzeResumes(formData) {
   return postForm('/matcher/batch-upload', formData)
 }
 
+export async function validateResumeFile(file) {
+  const formData = new FormData()
+  formData.append('resume', file)
+  return postForm('/matcher/validate-resume-file', formData)
+}
+
 export async function incrementVisitorCount() {
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/matcher/visitor-count/increment`,
