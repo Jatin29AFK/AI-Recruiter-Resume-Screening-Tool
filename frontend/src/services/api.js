@@ -97,6 +97,72 @@ export async function incrementVisitorCount() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Ingest (Power Automate / email intake)
+
+function getIngestHeaders() {
+  const secret = import.meta.env.VITE_INGEST_SECRET || ''
+  return secret ? { 'X-Ingest-Secret': secret } : {}
+}
+
+export async function ingestUploadFile(file, { recruiterEmail = '', messageId = '', subject = '', jobDescription = '', jobId = '' } = {}) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('recruiter_email', recruiterEmail)
+  formData.append('message_id', messageId)
+  formData.append('subject', subject)
+  formData.append('job_description', jobDescription)
+  formData.append('job_id', jobId)
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/ingest/upload`,
+    { method: 'POST', body: formData, headers: getIngestHeaders() },
+    'Ingest upload timed out.'
+  )
+  if (!response.ok) {
+    let msg = 'Ingest upload failed.'
+    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {}
+    throw new Error(msg)
+  }
+  return response.json()
+}
+
+export async function listIngestJobs(limit = 100) {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/ingest/jobs?limit=${limit}`,
+    { method: 'GET', headers: getIngestHeaders() },
+    'Fetching ingest jobs timed out.'
+  )
+  if (!response.ok) throw new Error('Failed to fetch ingest jobs.')
+  return response.json()
+}
+
+export async function analyzeIngestJob(ingestId, jobDescription, jobId = '') {
+  const formData = new FormData()
+  formData.append('job_description', jobDescription)
+  formData.append('job_id', jobId)
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/ingest/analyze/${ingestId}`,
+    { method: 'POST', body: formData, headers: getIngestHeaders() },
+    'Analysis timed out.'
+  )
+  if (!response.ok) {
+    let msg = 'Analysis failed.'
+    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {}
+    throw new Error(msg)
+  }
+  return response.json()
+}
+
+export async function deleteIngestJob(ingestId) {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/ingest/jobs/${ingestId}`,
+    { method: 'DELETE', headers: getIngestHeaders() },
+    'Delete timed out.'
+  )
+  if (!response.ok) throw new Error('Failed to delete ingest job.')
+  return response.json()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Job Management
 // ─────────────────────────────────────────────────────────────────────────────
 

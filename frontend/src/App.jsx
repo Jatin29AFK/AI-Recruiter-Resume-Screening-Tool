@@ -31,6 +31,7 @@ import AppBrand from './components/AppBrand'
 import ThemeToggle from './components/ThemeToggle'
 import RecruiterDashboard from './components/RecruiterDashboard'
 import RecommendationPanel from './components/RecommendationPanel'
+import IngestPanel from './components/IngestPanel'
 
 import {
   analyzeResume,
@@ -171,6 +172,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
 
   // ── Recruiter / batch screening state ────────────────────────────────────
   const [batchResult, setBatchResult] = useState(null)
+  const [showIngest, setShowIngest] = useState(false)
   const [batchLoading, setBatchLoading] = useState(false)
   const [batchError, setBatchError] = useState('')
 
@@ -560,10 +562,24 @@ function getTabStatuses(result, tailorResult, compareResult) {
     <div className="w-full space-y-8">
   <div className="space-y-4">
     <div className="relative flex justify-center">
-      <AppBrand onClick={handleReset} />
+      <AppBrand onClick={() => { handleReset(); setShowIngest(false) }} />
 
-      <div className="absolute right-0 top-1/2 -translate-y-1/2">
-          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
+        {!batchResult && !result && (
+          <button
+            type="button"
+            onClick={() => setShowIngest(v => !v)}
+            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+              showIngest
+                ? 'border-blue-400 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+            }`}
+            title="Email Intake — receive resumes via Outlook / Power Automate"
+          >
+            📥 Email Intake
+          </button>
+        )}
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </div>
     </div>
 
@@ -579,8 +595,15 @@ function getTabStatuses(result, tailorResult, compareResult) {
     )}
   </div>
 
+  {/* Email Ingest panel — toggled via header button */}
+  {!result && !batchResult && showIngest && (
+    <div className="rounded-[2rem] border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 px-6 py-7 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
+      <IngestPanel />
+    </div>
+  )}
+
   {/* Landing state: features banner full-width, UploadForm below */}
-  {!result && !batchResult && !loading && !batchLoading && !error && (
+  {!result && !batchResult && !loading && !batchLoading && !error && !showIngest && (
     <div className="space-y-6">
       <EmptyState />
       <UploadForm

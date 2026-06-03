@@ -1,0 +1,61 @@
+{
+  "jobs": {
+    "dc61acce-126f-4d95-856c-3ca32ecec698": {
+      "ingest_id": "dc61acce-126f-4d95-856c-3ca32ecec698",
+      "filename": "SACHINSONI.pdf",
+      "serve_id": "dc61acce-126f-4d95-856c-3ca32ecec698_SACHINSONI.pdf",
+      "file_hash": "d39cf580111216e56a86543450bfd3b8e7ee0d2bf9e698192412bd0354409f49",
+      "source": "webhook",
+      "recruiter_email": "test@example.com",
+      "status": "accepted",
+      "rejection_reason": "",
+      "detection": {
+        "layer_1_pass": true,
+        "layer_1_fail_reasons": [],
+        "language": "en",
+        "text_length": 4314,
+        "positive_signals": {
+          "text_length": 1.0,
+          "section_keywords": 1.0,
+          "date_density": 0.375,
+          "skill_overlap": 1.0,
+          "bullet_format": 0.7619,
+          "noun_density": 1.0
+        },
+        "resume_identity_signals": {
+          "contact_info": 1.0,
+          "resume_headings": 1.0,
+          "employment_language": 1.0
+        },
+        "negative_signals": {
+          "legal_language": 0.5,
+          "academic_paper": 0.0,
+          "essay_style": 0.0435,
+          "invoice_receipt": 0.0,
+          "travel_booking": 0.25,
+          "installation_guide": 0.0,
+          "learning_notes": 0.125,
+          "feedback_document": 0.0,
+          "code_heavy": 0.06,
+          "agent_change_log": 0.0,
+          "form_template": 0.3333
+        },
+        "positive_resume_score": 0.8824,
+        "negative_score": 0.293,
+        "confidence": 0.9894,
+        "final_label": "accept",
+        "hard_reject": false,
+        "decision_reason": "resume_like_signals_sufficient",
+        "warning_message": null
+      },
+      "analysis": null,
+      "job_id": "",
+      "metadata": {
+        "message_id": "",
+        "subject": "Test Resume Submission",
+        "source_type": "webhook"
+      },
+      "created_at": "2026-06-03T05:53:58.158433+00:00"
+    }
+  }
+}
