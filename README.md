@@ -92,6 +92,12 @@ python3 test_ingest.py path/to/sample-resume.pdf
 - IMAP polling setup
 - Troubleshooting
 
+🏗️ **[Architecture Guide](./ARCHITECTURE.md)** — End-to-end application architecture covering:
+- frontend and backend structure
+- analysis pipeline
+- persistence model
+- email intake design
+
 📄 **[Power Automate Template](./backend/power_automate_flow_template.json)** — Ready-to-import Flow
 
 🧪 **[Test Script](./backend/test_ingest.py)** — Verify your setup works

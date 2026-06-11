@@ -53,7 +53,7 @@ export default function ActionBar({
     const optimizedScore = tailorResult?.analysis_after?.overall_score ?? null
 
     const lines = [
-      'HireFit Resume Improvement Plan',
+      'Havells Resume Improvement Plan',
       '',
       'Current Snapshot',
       `- Fit Score: ${fitScore}% (${fitLabel})`,

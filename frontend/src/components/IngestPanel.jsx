@@ -7,9 +7,9 @@
  * --------
  * - Upload one or more resumes directly (drag-drop or browse)
  * - View previously ingested files (status: accepted / analyzed / rejected / error)
- * - Run analysis on an accepted-but-unscored resume by pasting a JD
+ * - Score resumes against a saved job and bulk-analyze pending candidates
+ * - Open the same full candidate analysis drawer used in recruiter review
  * - Delete ingest records
- * - Instructions for Power Automate and Outlook Quick Step setup
  */
 
 import { useState, useEffect, useRef } from 'react'
@@ -18,7 +18,11 @@ import {
   listIngestJobs,
   analyzeIngestJob,
   deleteIngestJob,
+  getIngestTargetJob,
+  setIngestTargetJob,
 } from '../services/api'
+import JobManager from './JobManager'
+import CandidateDetailPanel from './CandidateDetailPanel'
 
 const STATUS_COLORS = {
   analyzed: 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800',
@@ -29,9 +33,100 @@ const STATUS_COLORS = {
 
 const STATUS_LABELS = {
   analyzed: '✓ Analyzed',
-  accepted: '→ Pending JD',
+  accepted: '→ Ready to score',
   rejected: '✗ Rejected',
   error:    '! Error',
+}
+
+const DEFAULT_POLICY = {
+  shortlist_threshold: 63,
+  review_threshold: 44,
+}
+
+function deriveShortlistVerdict(score) {
+  if (score >= DEFAULT_POLICY.shortlist_threshold) return 'Shortlist'
+  if (score >= DEFAULT_POLICY.review_threshold) return 'Review'
+  return 'Reject'
+}
+
+function toCandidateView(job) {
+  const analysis = job?.analysis
+  if (!analysis) return null
+
+  const scores = analysis.scores || {}
+  const educationFit = analysis.education_fit || {}
+  const shortlistSimulation = analysis.shortlist_simulation || {}
+  const atsAudit = analysis.ats_audit || {}
+  const keywordCoverage = analysis.keyword_coverage || {}
+  const keywordSummary = keywordCoverage.summary || {}
+  const overallScore = scores.overall_score ?? analysis.overall_score ?? 0
+  const matchedSkills = analysis.matched_skills || []
+  const missingSkills = analysis.missing_skills || []
+  const criticalMissingSkills = analysis.critical_missing_skills || []
+  const requiredSkills = analysis.jd_requirements?.required_skills || []
+  const timelineGaps = (analysis.timeline_analysis?.gaps || []).map((gap) => {
+    if (typeof gap === 'string') return gap
+    if (gap?.label) return gap.label
+    if (gap?.message) return gap.message
+    const start = gap?.start || gap?.from || 'Unknown start'
+    const end = gap?.end || gap?.to || 'Unknown end'
+    return `${start} to ${end}`
+  })
+
+  const matchedRequiredSkills = matchedSkills.filter((skill) => requiredSkills.includes(skill))
+
+  return {
+    ...analysis,
+    ...scores,
+    candidate_id: job.ingest_id,
+    candidate_index: 0,
+    ingest_id: job.ingest_id,
+    filename: analysis.filename || job.filename,
+    fit_label: scores.fit_label || analysis.fit_label || 'Scored candidate',
+    overall_score: overallScore,
+    required_skill_score: scores.required_skill_score ?? 0,
+    skill_support_score: scores.skill_support_score ?? 0,
+    ats_score: analysis.ats_audit?.score ?? analysis.ats_score ?? 0,
+    career_progression_score: scores.career_progression_score ?? 0,
+    achievements_score: scores.achievements_score ?? 0,
+    industry_fit_score: scores.industry_fit_score ?? 0,
+    leadership_signals: scores.leadership_signals || [],
+    red_flags: scores.red_flags || [],
+    over_tailoring_flag: scores.over_tailoring_flag || false,
+    language_quality: scores.language_quality || null,
+    matched_skills: matchedSkills,
+    missing_skills: missingSkills,
+    critical_missing_skills: criticalMissingSkills,
+    estimated_experience_years: analysis.experience_estimate?.estimated_years ?? null,
+    experience_meets_requirement: analysis.experience_comparison?.meets_requirement ?? null,
+    education_meets_requirement: analysis.education_meets_requirement ?? educationFit.meets_requirement ?? null,
+    non_negotiable_verdict: analysis.non_negotiable_verdict || 'pass',
+    non_negotiable_reasons: analysis.non_negotiable_reasons || [],
+    non_negotiable_flags: analysis.non_negotiable_flags || [],
+    review_flags: analysis.review_flags || [],
+    keyword_missing_count: keywordSummary.missing_count ?? 0,
+    keyword_strong_count: keywordSummary.strong_count ?? 0,
+    keyword_coverage_items: keywordCoverage.items || [],
+    cert_coverage: analysis.cert_coverage || null,
+    shortlist_verdict: deriveShortlistVerdict(overallScore),
+    resume_serve_id: analysis.resume_serve_id || job.serve_id,
+    linkedin_url: analysis.structured_resume?.linkedin || '',
+    recommendation: analysis.recommendation || null,
+    shortlist_simulation: shortlistSimulation,
+    shortlist_reasons: shortlistSimulation.reasons || [],
+    resume_sections: analysis.resume_sections || {},
+    structured_resume: analysis.structured_resume || {},
+    raw_resume_text: analysis.raw_resume_text || '',
+    suggestions: analysis.suggestions || [],
+    ats_audit: atsAudit,
+    ats_issues: atsAudit.issues || [],
+    ats_issues_count: atsAudit.issues?.length ?? 0,
+    evidence_summary: analysis.evidence_summary || null,
+    timeline_gaps: timelineGaps,
+    required_skills_count: requiredSkills.length,
+    required_skills_matched_count: matchedRequiredSkills.length,
+    status: 'New',
+  }
 }
 
 function Badge({ status }) {
@@ -43,131 +138,166 @@ function Badge({ status }) {
   )
 }
 
-function InstructionsAccordion() {
-  const [open, setOpen] = useState(false)
+function SavedJobBar({
+  selectedJob,
+  pendingCount,
+  analyzingAll,
+  analyzeProgress,
+  targetJobSaving,
+  onOpenJobs,
+  onClearJob,
+  onAnalyzeAll,
+}) {
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-      >
-        <span>⚡ How to connect Outlook / Power Automate</span>
-        <span className="text-slate-400 text-xs">{open ? '▲ Hide' : '▼ Show'}</span>
-      </button>
-      {open && (
-        <div className="px-4 py-3 space-y-4 text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900">
-          <div>
-            <p className="font-bold text-slate-800 dark:text-white mb-1">Option 1 — Outlook Quick Step (fastest, no IT needed)</p>
-            <ol className="list-decimal list-inside space-y-1 text-xs">
-              <li>In Outlook Desktop → Home → Quick Steps → Create New.</li>
-              <li>Action: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">Forward</code> to <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">resumes@yourcompany.com</code>.</li>
-              <li>Name it "Send to Screening". Optionally add keyboard shortcut.</li>
-              <li>Select email with resume → click the Quick Step.</li>
-            </ol>
-          </div>
-          <div>
-            <p className="font-bold text-slate-800 dark:text-white mb-1">Option 2 — Power Automate Button (recommended UX)</p>
-            <ol className="list-decimal list-inside space-y-1 text-xs">
-              <li>Download <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">power_automate_flow_template.json</code> from the backend folder.</li>
-              <li>Go to <a href="https://make.powerautomate.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">make.powerautomate.com</a> → My Flows → Import.</li>
-              <li>Set <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">INGEST_WEBHOOK_URL</code> to your backend URL + <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/ingest/upload</code>.</li>
-              <li>Set <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">INGEST_SECRET</code> to the value of <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">INGEST_SECRET</code> in your backend <code>.env</code>.</li>
-              <li>Enable the Flow. Recruiters see a "Send to Screening" button inside Outlook.</li>
-            </ol>
-          </div>
-          <div>
-            <p className="font-bold text-slate-800 dark:text-white mb-1">Option 3 — Direct upload here</p>
-            <p className="text-xs">Drag and drop resume files below — same processing pipeline.</p>
-          </div>
-          <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-            <strong>Security note:</strong> Set <code>INGEST_SECRET</code> and <code>VITE_INGEST_SECRET</code> in your .env files before using this panel. Keep these values private.
-          </div>
+    <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-5 py-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Scoring target</p>
+          <h3 className="text-lg font-black text-slate-900 dark:text-white">
+            {selectedJob?.title || 'Choose a saved job'}
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {selectedJob
+              ? `New uploads can be scored immediately and ${pendingCount} pending candidate${pendingCount === 1 ? '' : 's'} can be analyzed in one run.`
+              : 'Pick one saved job to enable scoring for new and incoming resumes.'}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenJobs}
+            className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-400 dark:hover:border-slate-500"
+          >
+            Saved Jobs
+          </button>
+          {selectedJob && (
+            <button
+              type="button"
+              onClick={onClearJob}
+              disabled={targetJobSaving}
+              className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-300 transition hover:border-slate-400"
+            >
+              {targetJobSaving ? 'Saving…' : 'Clear'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onAnalyzeAll}
+            disabled={!selectedJob || pendingCount === 0 || analyzingAll}
+            className="rounded-2xl bg-slate-950 dark:bg-white px-5 py-2.5 text-sm font-black text-white dark:text-slate-950 shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-800 dark:hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {analyzingAll
+              ? `Analyzing ${analyzeProgress.done}/${analyzeProgress.total}`
+              : pendingCount > 0
+              ? `Analyze All (${pendingCount})`
+              : 'All Scored'}
+          </button>
+        </div>
+      </div>
+
+      {selectedJob?.description && (
+        <div className="mt-4 rounded-2xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
+          <p className="font-semibold">Using saved job rules from {selectedJob.title}</p>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-blue-600 dark:text-blue-400">{selectedJob.description}</p>
         </div>
       )}
     </div>
   )
 }
 
-function AnalyzeModal({ job, onClose, onDone }) {
-  const [jd, setJd] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  async function handleAnalyze() {
-    if (!jd.trim()) { setError('Please paste a job description.'); return }
-    setError('')
-    setLoading(true)
-    try {
-      const result = await analyzeIngestJob(job.ingest_id, jd)
-      onDone(result)
-    } catch (e) {
-      setError(e.message || 'Analysis failed.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <>
-      <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-x-4 top-24 z-[80] max-w-xl mx-auto rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Run Analysis</p>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">{job.filename}</p>
-          </div>
-          <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">✕</button>
-        </div>
-        <div className="p-5 space-y-3">
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Paste Job Description
-            <textarea
-              value={jd}
-              onChange={e => setJd(e.target.value)}
-              rows={8}
-              className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              placeholder="Paste the full job description here…"
-            />
-          </label>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button
-            type="button"
-            onClick={handleAnalyze}
-            disabled={loading}
-            className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-sm font-bold transition disabled:opacity-50"
-          >
-            {loading ? 'Analyzing…' : 'Run Analysis →'}
-          </button>
-        </div>
-      </div>
-    </>
-  )
-}
-
-export default function IngestPanel() {
+export default function IngestPanel({ onBack }) {
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadErrors, setUploadErrors] = useState([])
   const [dragOver, setDragOver] = useState(false)
-  const [analyzeTarget, setAnalyzeTarget] = useState(null)
   const [analyzeSuccess, setAnalyzeSuccess] = useState(null)
+  const [selectedJob, setSelectedJob] = useState(null)
+  const [showJobManager, setShowJobManager] = useState(false)
+  const [analyzingAll, setAnalyzingAll] = useState(false)
+  const [analyzeProgress, setAnalyzeProgress] = useState({ done: 0, total: 0 })
+  const [activeAnalyzeIds, setActiveAnalyzeIds] = useState([])
+  const [selectedCandidateId, setSelectedCandidateId] = useState(null)
+  const [targetJobSaving, setTargetJobSaving] = useState(false)
   const fileInputRef = useRef(null)
 
-  async function fetchJobs() {
+  async function fetchJobs({ silent = false } = {}) {
+    if (!silent) {
+      setLoading(true)
+    }
+
     try {
       const data = await listIngestJobs(200)
       setJobs(data.jobs || [])
     } catch {
-      // ingest secret not configured / endpoint not reachable
-      setJobs([])
+      if (!silent) {
+        setJobs([])
+      }
     } finally {
-      setLoading(false)
+      if (!silent) {
+        setLoading(false)
+      }
     }
   }
 
-  useEffect(() => { fetchJobs() }, [])
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadInitialState() {
+      setLoading(true)
+      try {
+        const [jobsData, targetData] = await Promise.all([
+          listIngestJobs(200),
+          getIngestTargetJob(),
+        ])
+        if (cancelled) return
+        setJobs(jobsData.jobs || [])
+        setSelectedJob(targetData.job || null)
+      } catch {
+        if (cancelled) return
+        setJobs([])
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadInitialState()
+    const intervalId = window.setInterval(() => {
+      fetchJobs({ silent: true })
+    }, 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  async function handleSelectJob(job) {
+    setTargetJobSaving(true)
+    try {
+      const result = await setIngestTargetJob(job?.job_id || '')
+      setSelectedJob(result.job || null)
+      setShowJobManager(false)
+    } catch (e) {
+      alert(e.message || 'Failed to save Email Intake target job.')
+    } finally {
+      setTargetJobSaving(false)
+    }
+  }
+
+  async function handleClearJob() {
+    setTargetJobSaving(true)
+    try {
+      await setIngestTargetJob('')
+      setSelectedJob(null)
+    } catch (e) {
+      alert(e.message || 'Failed to clear Email Intake target job.')
+    } finally {
+      setTargetJobSaving(false)
+    }
+  }
 
   async function handleFiles(files) {
     if (!files || files.length === 0) return
@@ -176,7 +306,10 @@ export default function IngestPanel() {
     const errors = []
     for (const file of Array.from(files)) {
       try {
-        const result = await ingestUploadFile(file)
+        const result = await ingestUploadFile(file, {
+          jobDescription: selectedJob?.description || '',
+          jobId: selectedJob?.job_id || '',
+        })
         if (result.status === 'rejected' || result.status === 'error') {
           errors.push(`${file.name}: ${result.rejection_reason || 'Rejected'}`)
         }
@@ -195,20 +328,75 @@ export default function IngestPanel() {
     handleFiles(e.dataTransfer.files)
   }
 
+  async function handleAnalyzeJob(job) {
+    if (!selectedJob?.description) {
+      setShowJobManager(true)
+      return
+    }
+
+    setActiveAnalyzeIds(prev => [...prev, job.ingest_id])
+    try {
+      const result = await analyzeIngestJob(job.ingest_id, selectedJob.description, selectedJob.job_id)
+      setAnalyzeSuccess(result?.filename || job.filename)
+      await fetchJobs({ silent: true })
+      window.setTimeout(() => setAnalyzeSuccess(null), 4000)
+    } catch (e) {
+      alert(e.message || 'Analysis failed.')
+    } finally {
+      setActiveAnalyzeIds(prev => prev.filter(id => id !== job.ingest_id))
+    }
+  }
+
+  async function handleAnalyzeAll() {
+    if (!selectedJob?.description) {
+      setShowJobManager(true)
+      return
+    }
+
+    const pendingJobs = jobs.filter(job => job.status === 'accepted')
+    if (pendingJobs.length === 0) return
+
+    setAnalyzingAll(true)
+    setAnalyzeProgress({ done: 0, total: pendingJobs.length })
+    setActiveAnalyzeIds(pendingJobs.map(job => job.ingest_id))
+
+    try {
+      for (let index = 0; index < pendingJobs.length; index += 1) {
+        const job = pendingJobs[index]
+        await analyzeIngestJob(job.ingest_id, selectedJob.description, selectedJob.job_id)
+        setAnalyzeProgress({ done: index + 1, total: pendingJobs.length })
+      }
+      setAnalyzeSuccess(`${pendingJobs.length} candidate${pendingJobs.length === 1 ? '' : 's'} scored against ${selectedJob.title}`)
+      await fetchJobs({ silent: true })
+      window.setTimeout(() => setAnalyzeSuccess(null), 5000)
+    } catch (e) {
+      alert(e.message || 'Bulk analysis failed.')
+    } finally {
+      setAnalyzingAll(false)
+      setActiveAnalyzeIds([])
+    }
+  }
+
   async function handleDelete(ingestId) {
     try {
       await deleteIngestJob(ingestId)
       setJobs(prev => prev.filter(j => j.ingest_id !== ingestId))
+      if (selectedCandidateId === ingestId) {
+        setSelectedCandidateId(null)
+      }
+      await fetchJobs({ silent: true })
     } catch (e) {
-      alert(e.message)
+      const message = e.message || 'Failed to delete ingest job.'
+      if (message.toLowerCase().includes('not found')) {
+        setJobs(prev => prev.filter(j => j.ingest_id !== ingestId))
+        if (selectedCandidateId === ingestId) {
+          setSelectedCandidateId(null)
+        }
+        await fetchJobs({ silent: true })
+        return
+      }
+      alert(message)
     }
-  }
-
-  function onAnalyzeDone(result) {
-    setAnalyzeTarget(null)
-    setAnalyzeSuccess(result?.filename || 'Resume')
-    fetchJobs()
-    setTimeout(() => setAnalyzeSuccess(null), 4000)
   }
 
   const byStatus = {
@@ -216,19 +404,41 @@ export default function IngestPanel() {
     accepted: jobs.filter(j => j.status === 'accepted'),
     rejected: jobs.filter(j => j.status === 'rejected' || j.status === 'error'),
   }
+  const selectedCandidate = toCandidateView(jobs.find(job => job.ingest_id === selectedCandidateId))
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400 mb-1">Email Ingest</p>
-        <h2 className="text-xl font-black text-slate-900 dark:text-white">Resume Intake</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Upload resumes manually or receive them automatically via Outlook / Power Automate.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400 mb-1">Recruiter workspace</p>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white">Email Intake</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Incoming resumes land here for scoring, review, and shortlist decisions.
+          </p>
+        </div>
+        {typeof onBack === 'function' && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 self-start rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-400 dark:hover:border-slate-500"
+          >
+            <span aria-hidden="true">←</span>
+            Back
+          </button>
+        )}
       </div>
 
-      <InstructionsAccordion />
+      <SavedJobBar
+        selectedJob={selectedJob}
+        pendingCount={byStatus.accepted.length}
+        analyzingAll={analyzingAll}
+        analyzeProgress={analyzeProgress}
+        targetJobSaving={targetJobSaving}
+        onOpenJobs={() => setShowJobManager(true)}
+        onClearJob={handleClearJob}
+        onAnalyzeAll={handleAnalyzeAll}
+      />
 
       {/* Upload drop zone */}
       <div
@@ -245,7 +455,9 @@ export default function IngestPanel() {
         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           {uploading ? 'Uploading…' : 'Drop PDF / DOCX resumes here, or click to browse'}
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-500">Up to 50 files. Files are scanned and validated automatically.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          Up to 50 files. Files are scanned automatically{selectedJob ? ` and scored against ${selectedJob.title}.` : '.'}
+        </p>
         <input
           ref={fileInputRef}
           type="file"
@@ -278,14 +490,14 @@ export default function IngestPanel() {
         <p className="text-sm text-slate-500 dark:text-slate-400">Loading ingest history…</p>
       ) : jobs.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-6 py-10 text-center">
-          <p className="text-slate-500 dark:text-slate-400 text-sm">No resumes ingested yet. Upload files above or connect via Power Automate.</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">No resumes yet. Upload a candidate file or wait for inbox resumes to appear here.</p>
         </div>
       ) : (
         <div className="space-y-4">
           {/* Summary bar */}
           <div className="flex flex-wrap gap-3 text-xs font-semibold">
-            <span className="text-green-600 dark:text-green-400">{byStatus.analyzed.length} analyzed</span>
-            <span className="text-blue-600 dark:text-blue-400">{byStatus.accepted.length} pending JD</span>
+            <span className="text-green-600 dark:text-green-400">{byStatus.analyzed.length} scored</span>
+            <span className="text-blue-600 dark:text-blue-400">{byStatus.accepted.length} ready to score</span>
             <span className="text-red-500 dark:text-red-400">{byStatus.rejected.length} rejected / errors</span>
           </div>
 
@@ -306,13 +518,25 @@ export default function IngestPanel() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {jobs.map(job => {
                   const overallScore = job.analysis?.scores?.overall_score ?? job.analysis?.overall_score ?? null
+                  const isAnalyzing = activeAnalyzeIds.includes(job.ingest_id)
                   const ingestedAt = job.created_at
                     ? new Date(job.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
                     : '—'
                   return (
                     <tr key={job.ingest_id} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800 dark:text-slate-100 truncate max-w-[220px]" title={job.filename}>{job.filename}</p>
+                        {job.status === 'analyzed' ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCandidateId(job.ingest_id)}
+                            className="max-w-[220px] truncate text-left font-semibold text-slate-800 dark:text-slate-100 underline-offset-2 hover:underline"
+                            title={job.filename}
+                          >
+                            {job.filename}
+                          </button>
+                        ) : (
+                          <p className="font-medium text-slate-800 dark:text-slate-100 truncate max-w-[220px]" title={job.filename}>{job.filename}</p>
+                        )}
                         {job.rejection_reason && (
                           <p className="text-xs text-red-500 dark:text-red-400 mt-0.5 truncate max-w-[220px]">{job.rejection_reason}</p>
                         )}
@@ -331,20 +555,31 @@ export default function IngestPanel() {
                           {job.status === 'accepted' && (
                             <button
                               type="button"
-                              onClick={() => setAnalyzeTarget(job)}
-                              className="rounded-lg border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 px-2 py-1 text-xs font-semibold text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900 transition"
+                              onClick={() => handleAnalyzeJob(job)}
+                              disabled={!selectedJob || isAnalyzing}
+                              className="rounded-lg border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 px-2 py-1 text-xs font-semibold text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900 transition disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              Analyze
+                              {isAnalyzing ? 'Analyzing…' : 'Analyze'}
                             </button>
                           )}
                           {job.status === 'analyzed' && (
-                            <button
-                              type="button"
-                              onClick={() => setAnalyzeTarget(job)}
-                              className="rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                            >
-                              Re-analyze
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCandidateId(job.ingest_id)}
+                                className="rounded-lg border border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950 px-2 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition"
+                              >
+                                View Analysis
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAnalyzeJob(job)}
+                                disabled={!selectedJob || isAnalyzing}
+                                className="rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isAnalyzing ? 'Analyzing…' : 'Re-analyze'}
+                              </button>
+                            </>
                           )}
                           <button
                             type="button"
@@ -364,12 +599,18 @@ export default function IngestPanel() {
         </div>
       )}
 
-      {/* Analyze modal */}
-      {analyzeTarget && (
-        <AnalyzeModal
-          job={analyzeTarget}
-          onClose={() => setAnalyzeTarget(null)}
-          onDone={onAnalyzeDone}
+      {showJobManager && (
+        <JobManager
+          onSelectJob={handleSelectJob}
+          onClose={() => setShowJobManager(false)}
+        />
+      )}
+
+      {selectedCandidate && (
+        <CandidateDetailPanel
+          candidate={selectedCandidate}
+          policy={DEFAULT_POLICY}
+          onClose={() => setSelectedCandidateId(null)}
         />
       )}
     </div>

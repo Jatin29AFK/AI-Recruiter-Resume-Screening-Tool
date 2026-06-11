@@ -82,6 +82,7 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
     setIsValidatingFiles(true)
     const rejectedByContent = []
     const acceptedByContent = []
+    const validationWarnings = []
 
     try {
       const checks = await Promise.all(
@@ -89,11 +90,11 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
           try {
             const validation = await validateResumeFile(file)
             return { file, validation, error: null }
-          } catch (err) {
+          } catch (error) {
             return {
               file,
               validation: null,
-              error: err?.message || 'Could not validate this file.',
+              error,
             }
           }
         })
@@ -101,7 +102,12 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
 
       checks.forEach(({ file, validation, error }) => {
         if (error) {
-          rejectedByContent.push(`${file.name} (${error})`)
+          if (error?.code === 'API_UNREACHABLE') {
+            acceptedByContent.push(file)
+            validationWarnings.push(file.name)
+            return
+          }
+          rejectedByContent.push(`${file.name} (${error?.message || 'Could not validate this file.'})`)
           return
         }
         if (!validation?.is_valid_resume || validation?.final_label === 'reject') {
@@ -139,6 +145,11 @@ export default function UploadForm({ onBatchAnalyze, loading }) {
     }
     if (rejectedByContent.length) {
       parts.push(`Skipped non-resume file(s): ${rejectedByContent.join('; ')}`)
+    }
+    if (validationWarnings.length) {
+      parts.push(
+        `Backend validation was unavailable for: ${validationWarnings.join(', ')}. These files were still added and will be checked during screening.`
+      )
     }
     if (overflow.length) {
       parts.push(

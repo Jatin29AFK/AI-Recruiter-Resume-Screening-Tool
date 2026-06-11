@@ -44,6 +44,7 @@ INGEST_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR = _BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 INGEST_JOBS_FILE = DATA_DIR / "ingest_jobs.json"
+INGEST_SETTINGS_FILE = DATA_DIR / "ingest_settings.json"
 
 _LOCK = threading.Lock()
 
@@ -78,6 +79,60 @@ def _save_jobs(store: dict) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, INGEST_JOBS_FILE)
+
+
+def _empty_settings_store() -> dict:
+    return {"active_job_id": ""}
+
+
+def _load_settings() -> dict:
+    if not INGEST_SETTINGS_FILE.exists():
+        return _empty_settings_store()
+    try:
+        with open(INGEST_SETTINGS_FILE, "r") as f:
+            data = json.load(f)
+            if "active_job_id" not in data:
+                data["active_job_id"] = ""
+            return data
+    except (json.JSONDecodeError, OSError):
+        return _empty_settings_store()
+
+
+def _save_settings(store: dict) -> None:
+    tmp = INGEST_SETTINGS_FILE.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        json.dump(store, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, INGEST_SETTINGS_FILE)
+
+
+def get_active_job_id() -> str:
+    store = _load_settings()
+    active_job_id = store.get("active_job_id")
+    return active_job_id if isinstance(active_job_id, str) else ""
+
+
+def set_active_job_id(job_id: str) -> str:
+    normalized_job_id = (job_id or "").strip()
+    with _LOCK:
+        store = _load_settings()
+        store["active_job_id"] = normalized_job_id
+        _save_settings(store)
+    return normalized_job_id
+
+
+def get_active_job():
+    active_job_id = get_active_job_id()
+    if not active_job_id:
+        return None
+
+    from app.routes.jobs import load_job_by_id
+
+    active_job = load_job_by_id(active_job_id)
+    if active_job is None:
+        set_active_job_id("")
+    return active_job
 
 
 def _upsert_job(job: dict) -> None:
@@ -225,14 +280,24 @@ def process_file(
         return job
 
     # ── Immediate analysis (if JD provided) ──────────────────────────────────
+    resolved_job_description = (job_description or "").strip()
+    resolved_job_id = (job_id or "").strip()
+    active_job = None
+
+    if not resolved_job_description:
+        active_job = get_active_job()
+        if active_job and getattr(active_job, "description", "").strip():
+            resolved_job_description = active_job.description.strip()
+            resolved_job_id = getattr(active_job, "job_id", "") or resolved_job_id
+
     analysis_result = None
-    if job_description and job_description.strip():
+    if resolved_job_description:
         try:
             from app.services.jd_guardrails import validate_job_description_input
             from app.services.analyzer import analyze_resume_against_jd
             from app.routes.jobs import load_job_by_id
-            validated_jd = validate_job_description_input(job_description)
-            saved_job = load_job_by_id(job_id) if job_id else None
+            validated_jd = validate_job_description_input(resolved_job_description)
+            saved_job = load_job_by_id(resolved_job_id) if resolved_job_id else None
             analysis_result = analyze_resume_against_jd(
                 file_path=str(dest),
                 filename=original_filename,
@@ -254,7 +319,7 @@ def process_file(
         status="analyzed" if analysis_result and "error" not in analysis_result else "accepted",
         detection=detection,
         analysis=analysis_result,
-        job_id=job_id,
+        job_id=resolved_job_id,
         metadata=metadata,
     )
     _upsert_job(job)
@@ -296,7 +361,12 @@ def _make_job(
 _IMAP_THREAD: threading.Thread | None = None
 _IMAP_STOP = threading.Event()
 
-POLL_INTERVAL_SECONDS = int(os.getenv("IMAP_POLL_INTERVAL", "120"))
+
+def _get_poll_interval_seconds() -> int:
+    try:
+        return max(5, int(os.getenv("IMAP_POLL_INTERVAL", "15")))
+    except (TypeError, ValueError):
+        return 15
 
 
 def _imap_poll_loop():
@@ -389,7 +459,7 @@ def _imap_poll_loop():
         except Exception as e:
             logger.exception("IMAP poll error: %s", e)
 
-        _IMAP_STOP.wait(POLL_INTERVAL_SECONDS)
+        _IMAP_STOP.wait(_get_poll_interval_seconds())
 
     logger.info("IMAP poller stopped.")
 

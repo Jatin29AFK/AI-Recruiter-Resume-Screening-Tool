@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,10 +19,21 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: start IMAP poller if configured
+    from app.services.email_ingest import start_imap_poller
+    start_imap_poller()
+    yield
+    # Shutdown: stop IMAP poller
+    from app.services.email_ingest import stop_imap_poller
+    stop_imap_poller()
+
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
-    description="Hybrid AI Resume–Job Matcher backend"
+    description="Hybrid AI Resume–Job Matcher backend",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

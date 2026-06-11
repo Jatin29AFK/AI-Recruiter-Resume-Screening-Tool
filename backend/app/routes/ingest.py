@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Header, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 
-from app.services.email_ingest import process_file, get_all_jobs, get_job
+from app.services.email_ingest import process_file, get_all_jobs, get_job, get_active_job_id, set_active_job_id
 from app.services.jd_guardrails import validate_job_description_input
 from app.services.analyzer import analyze_resume_against_jd
 
@@ -41,6 +41,10 @@ class IngestBase64Request(BaseModel):
     message_id: str = ""
     subject: str = ""
     job_description: str = ""
+    job_id: str = ""
+
+
+class IngestTargetJobRequest(BaseModel):
     job_id: str = ""
 
 
@@ -247,6 +251,48 @@ def get_ingest_job(
     if not job:
         raise HTTPException(status_code=404, detail="Ingest job not found.")
     return job
+
+
+@router.get("/target-job")
+def get_ingest_target_job(
+    x_ingest_secret: Optional[str] = Header(None),
+):
+    _check_secret(x_ingest_secret)
+
+    from app.routes.jobs import load_job_by_id
+
+    active_job_id = get_active_job_id()
+    if not active_job_id:
+        return {"job_id": "", "job": None}
+
+    job = load_job_by_id(active_job_id)
+    if job is None:
+        set_active_job_id("")
+        return {"job_id": "", "job": None}
+
+    return {"job_id": active_job_id, "job": job.model_dump()}
+
+
+@router.put("/target-job")
+def set_ingest_target_job(
+    payload: IngestTargetJobRequest,
+    x_ingest_secret: Optional[str] = Header(None),
+):
+    _check_secret(x_ingest_secret)
+
+    from app.routes.jobs import load_job_by_id
+
+    job_id = (payload.job_id or "").strip()
+    if not job_id:
+        set_active_job_id("")
+        return {"job_id": "", "job": None}
+
+    job = load_job_by_id(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Saved job not found.")
+
+    set_active_job_id(job_id)
+    return {"job_id": job_id, "job": job.model_dump()}
 
 
 # ── Re-analyze against a JD ──────────────────────────────────────────────────

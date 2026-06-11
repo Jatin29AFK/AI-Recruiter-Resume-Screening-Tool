@@ -184,9 +184,11 @@ function getTabStatuses(result, tailorResult, compareResult) {
   const [formResetKey, setFormResetKey] = useState(0)
   const [visitorCount, setVisitorCount] = useState(null)
   const hasRegisteredVisit = useRef(false)
+  const intakePanelRef = useRef(null)
+  const shouldScrollToIngest = useRef(false)
 
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('hirefit-theme')
+    const saved = localStorage.getItem('havells-theme')
     return saved || 'light'
   })
 
@@ -214,7 +216,7 @@ function getTabStatuses(result, tailorResult, compareResult) {
 
     useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
-    localStorage.setItem('hirefit-theme', theme)
+      localStorage.setItem('havells-theme', theme)
   }, [theme])
 
   useEffect(() => {
@@ -232,6 +234,15 @@ function getTabStatuses(result, tailorResult, compareResult) {
 
   registerVisitor()
 }, [])
+
+  useEffect(() => {
+    if (!showIngest || !shouldScrollToIngest.current || !intakePanelRef.current) return
+
+    shouldScrollToIngest.current = false
+    window.requestAnimationFrame(() => {
+      intakePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [showIngest])
 
   const handleTailorResume = async () => {
     if (!lastSubmission) {
@@ -256,6 +267,11 @@ function getTabStatuses(result, tailorResult, compareResult) {
   const toggleTheme = () => {
   setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
 }
+
+  const openIngestPanel = () => {
+    shouldScrollToIngest.current = true
+    setShowIngest(true)
+  }
 
 
   const handleClearCompare = () => {
@@ -555,31 +571,21 @@ function getTabStatuses(result, tailorResult, compareResult) {
     <div
   className={`min-h-screen px-4 py-6 transition-colors duration-300 ${
     theme === 'dark'
-      ? 'bg-slate-950 text-white'
-      : 'bg-slate-100 text-gray-900'
+      ? 'bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.16),_transparent_28%),linear-gradient(180deg,_#020617_0%,_#0f172a_100%)] text-white'
+      : 'bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_transparent_24%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] text-gray-900'
   }`}
 >
     <div className="w-full space-y-8">
-  <div className="space-y-4">
-    <div className="relative flex justify-center">
-      <AppBrand onClick={() => { handleReset(); setShowIngest(false) }} />
-
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
-        {!batchResult && !result && (
-          <button
-            type="button"
-            onClick={() => setShowIngest(v => !v)}
-            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
-              showIngest
-                ? 'border-blue-400 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-            }`}
-            title="Email Intake — receive resumes via Outlook / Power Automate"
-          >
-            📥 Email Intake
-          </button>
-        )}
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+  <div className="space-y-5">
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+      <div />
+      <div className="flex justify-center">
+        <AppBrand onClick={() => { handleReset(); setShowIngest(false) }} />
+      </div>
+      <div className="flex justify-end">
+        <div className="flex items-center gap-2">
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
       </div>
     </div>
 
@@ -597,15 +603,15 @@ function getTabStatuses(result, tailorResult, compareResult) {
 
   {/* Email Ingest panel — toggled via header button */}
   {!result && !batchResult && showIngest && (
-    <div className="rounded-[2rem] border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 px-6 py-7 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
-      <IngestPanel />
+    <div ref={intakePanelRef} className="rounded-[2rem] border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 px-6 py-7 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
+      <IngestPanel onBack={() => setShowIngest(false)} />
     </div>
   )}
 
   {/* Landing state: features banner full-width, UploadForm below */}
   {!result && !batchResult && !loading && !batchLoading && !error && !showIngest && (
     <div className="space-y-6">
-      <EmptyState />
+      <EmptyState onOpenEmailIntake={openIngestPanel} />
       <UploadForm
         key={`upload-${formResetKey}`}
         onAnalyze={handleAnalyze}

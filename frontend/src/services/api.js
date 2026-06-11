@@ -4,6 +4,16 @@ export const API_BASE_URL =
 
 const REQUEST_TIMEOUT_MS = 300000
 
+function buildApiUrl(endpoint) {
+  return `${API_BASE_URL}${endpoint}`
+}
+
+function createRequestError(message, code) {
+  const error = new Error(message)
+  if (code) error.code = code
+  return error
+}
+
 function getTimeoutErrorMessage(endpoint) {
   if (endpoint === '/matcher/batch-upload') {
     return 'Screening is taking longer than expected. Please try a smaller batch or retry in a moment.'
@@ -32,21 +42,36 @@ async function fetchWithTimeout(url, options = {}, timeoutMessage) {
 }
 
 async function postForm(endpoint, formData) {
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}${endpoint}`,
-    {
-      method: 'POST',
-      body: formData,
-    },
-    getTimeoutErrorMessage(endpoint)
-  )
+  const requestUrl = buildApiUrl(endpoint)
+  let response
+
+  try {
+    response = await fetchWithTimeout(
+      requestUrl,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      getTimeoutErrorMessage(endpoint)
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${requestUrl}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
 
   if (!response.ok) {
     let errorMessage = 'Something went wrong while processing your request.'
     try {
       const errorData = await response.json()
       if (errorData.detail) errorMessage = errorData.detail
-    } catch {}
+    } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
     throw new Error(errorMessage)
   }
 
@@ -76,20 +101,33 @@ export async function validateResumeFile(file) {
 }
 
 export async function incrementVisitorCount() {
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}/matcher/visitor-count/increment`,
-    {
-      method: 'POST',
-    },
-    'Updating the visitor counter took too long.'
-  )
+  let response
+  try {
+    response = await fetchWithTimeout(
+      buildApiUrl('/matcher/visitor-count/increment'),
+      {
+        method: 'POST',
+      },
+      'Updating the visitor counter took too long.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl('/matcher/visitor-count/increment')}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
 
   if (!response.ok) {
     let errorMessage = 'Failed to update visitor count.'
     try {
       const errorData = await response.json()
       if (errorData.detail) errorMessage = errorData.detail
-    } catch {}
+    } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
     throw new Error(errorMessage)
   }
 
@@ -112,26 +150,111 @@ export async function ingestUploadFile(file, { recruiterEmail = '', messageId = 
   formData.append('subject', subject)
   formData.append('job_description', jobDescription)
   formData.append('job_id', jobId)
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}/ingest/upload`,
-    { method: 'POST', body: formData, headers: getIngestHeaders() },
-    'Ingest upload timed out.'
-  )
+  let response
+  try {
+    response = await fetchWithTimeout(
+      buildApiUrl('/ingest/upload'),
+      { method: 'POST', body: formData, headers: getIngestHeaders() },
+      'Ingest upload timed out.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl('/ingest/upload')}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
   if (!response.ok) {
     let msg = 'Ingest upload failed.'
-    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {}
+    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
     throw new Error(msg)
   }
   return response.json()
 }
 
 export async function listIngestJobs(limit = 100) {
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}/ingest/jobs?limit=${limit}`,
-    { method: 'GET', headers: getIngestHeaders() },
-    'Fetching ingest jobs timed out.'
-  )
+  let response
+  try {
+    response = await fetchWithTimeout(
+      `${buildApiUrl('/ingest/jobs')}?limit=${limit}`,
+      { method: 'GET', headers: getIngestHeaders() },
+      'Fetching ingest jobs timed out.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl('/ingest/jobs')}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
   if (!response.ok) throw new Error('Failed to fetch ingest jobs.')
+  return response.json()
+}
+
+export async function getIngestTargetJob() {
+  let response
+  try {
+    response = await fetchWithTimeout(
+      buildApiUrl('/ingest/target-job'),
+      { method: 'GET', headers: getIngestHeaders() },
+      'Fetching Email Intake target job timed out.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl('/ingest/target-job')}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
+  if (!response.ok) {
+    let msg = 'Failed to fetch Email Intake target job.'
+    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
+    throw new Error(msg)
+  }
+  return response.json()
+}
+
+export async function setIngestTargetJob(jobId = '') {
+  let response
+  try {
+    response = await fetchWithTimeout(
+      buildApiUrl('/ingest/target-job'),
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getIngestHeaders(),
+        },
+        body: JSON.stringify({ job_id: jobId }),
+      },
+      'Saving Email Intake target job timed out.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl('/ingest/target-job')}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
+  if (!response.ok) {
+    let msg = 'Failed to save Email Intake target job.'
+    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
+    throw new Error(msg)
+  }
   return response.json()
 }
 
@@ -139,26 +262,56 @@ export async function analyzeIngestJob(ingestId, jobDescription, jobId = '') {
   const formData = new FormData()
   formData.append('job_description', jobDescription)
   formData.append('job_id', jobId)
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}/ingest/analyze/${ingestId}`,
-    { method: 'POST', body: formData, headers: getIngestHeaders() },
-    'Analysis timed out.'
-  )
+  let response
+  try {
+    response = await fetchWithTimeout(
+      buildApiUrl(`/ingest/analyze/${ingestId}`),
+      { method: 'POST', body: formData, headers: getIngestHeaders() },
+      'Analysis timed out.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl(`/ingest/analyze/${ingestId}`)}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
   if (!response.ok) {
     let msg = 'Analysis failed.'
-    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {}
+    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
     throw new Error(msg)
   }
   return response.json()
 }
 
 export async function deleteIngestJob(ingestId) {
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}/ingest/jobs/${ingestId}`,
-    { method: 'DELETE', headers: getIngestHeaders() },
-    'Delete timed out.'
-  )
-  if (!response.ok) throw new Error('Failed to delete ingest job.')
+  let response
+  try {
+    response = await fetchWithTimeout(
+      buildApiUrl(`/ingest/jobs/${ingestId}`),
+      { method: 'DELETE', headers: getIngestHeaders() },
+      'Delete timed out.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl(`/ingest/jobs/${ingestId}`)}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
+  if (!response.ok) {
+    let msg = 'Failed to delete ingest job.'
+    try { const d = await response.json(); if (d.detail) msg = d.detail } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
+    throw new Error(msg)
+  }
   return response.json()
 }
 
@@ -167,24 +320,37 @@ export async function deleteIngestJob(ingestId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function fetchJSON(url, options = {}) {
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}${url}`,
-    {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
+  let response
+  try {
+    response = await fetchWithTimeout(
+      buildApiUrl(url),
+      {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
       },
-    },
-    'The request took too long to finish. Please retry.'
-  )
+      'The request took too long to finish. Please retry.'
+    )
+  } catch (error) {
+    if (error?.name === 'TypeError') {
+      throw createRequestError(
+        `Could not reach the backend at ${buildApiUrl(url)}. Start the backend server or update VITE_API_BASE_URL.`,
+        'API_UNREACHABLE'
+      )
+    }
+    throw error
+  }
 
   if (!response.ok) {
     let errorMessage = 'Request failed.'
     try {
       const errorData = await response.json()
       if (errorData.detail) errorMessage = errorData.detail
-    } catch {}
+    } catch {
+      // Ignore non-JSON error bodies and keep the fallback message.
+    }
     throw new Error(errorMessage)
   }
 

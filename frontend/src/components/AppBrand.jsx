@@ -9,17 +9,15 @@ export default function AppBrand({ onClick }) {
     <button
       type="button"
       onClick={handleClick}
-      className="group grid w-full max-w-5xl cursor-pointer grid-cols-[72px_minmax(0,1fr)] items-center gap-5 rounded-[2rem] border border-slate-200 bg-white px-8 py-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/5 transition hover:-translate-y-0.5 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900 dark:ring-white/10"
-      title="Click to restart HireFit"
+      className="group grid w-full max-w-4xl cursor-pointer grid-cols-[96px_minmax(0,1fr)] items-center gap-5 rounded-[2rem] border border-slate-200/80 bg-white/95 px-7 py-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900/95 dark:ring-white/10"
+      title="Click to restart Havells Hiring Intelligence"
     >
       <div className="flex items-center justify-center">
-        <div className="rounded-3xl bg-transparent p-0">
-          <img
-            src="/havells.png"
-            alt="Havells logo"
-            className="h-20 w-20 shrink-0 rounded-2xl object-contain bg-white dark:bg-slate-900 p-2"
-          />
-        </div>
+        <img
+          src="/havells.png"
+          alt="Havells logo"
+          className="h-24 w-24 shrink-0 object-contain"
+        />
       </div>
 
       <div className="flex flex-col items-center justify-center text-center">

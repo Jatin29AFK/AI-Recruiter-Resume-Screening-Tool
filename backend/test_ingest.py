@@ -18,6 +18,8 @@ import os
 import requests
 from pathlib import Path
 
+__test__ = False
+
 # Configuration
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://127.0.0.1:8000')
 INGEST_SECRET = os.getenv('INGEST_SECRET', '')
