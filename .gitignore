@@ -5,6 +5,9 @@ backend/__pycache__/
 backend/**/*.pyc
 backend/.env
 backend/uploads/
+backend/.agents/
+backend/.codex/
+backend/.python-version
 
 # Frontend
 frontend/node_modules/
@@ -15,6 +18,10 @@ frontend/.env
 .vscode/
 .idea/
 .DS_Store
+.agents
+.agents/
+.codex
+.codex/
 
 # Backend
 backend/.pytest_cache/
@@ -26,11 +33,31 @@ backend/**/*.pyd
  
 # Runtime/generated backend data
 backend/data/visitor_count.json
+backend/data/ingest_jobs.json
+backend/data/ingest_settings.json
+backend/data/recruiter_notes.json
+backend/data/candidate_statuses.json
  
 # Frontend
 frontend/.env.*
 !frontend/.env.example
 frontend/.vercel/
+
+# Demo / presentation / local-only artifacts
+Backend selected cvs/
+sample-resumes/
+screenshots/
+uploads/
+backend/power_automate_flow_template.json
+backend/power_automate_flow_template.zip
+*.zip
+*.pdf
+*.docx
+
+# Markdown docs: keep README files only
+*.md
+!README.md
+!**/README.md
  
 # General logs / temp
 *.log
